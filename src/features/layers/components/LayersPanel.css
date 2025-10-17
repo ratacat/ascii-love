@@ -1,0 +1,71 @@
+.layers-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.layers-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.layers-panel__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border 160ms ease;
+  font-size: 0.8rem;
+}
+
+.layers-panel__item:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.layers-panel__item--active {
+  background: rgba(112, 214, 255, 0.16);
+  border-color: rgba(112, 214, 255, 0.42);
+}
+
+.layers-panel__visibility {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.layers-panel__visibility--on {
+  color: rgba(112, 214, 255, 0.85);
+  text-shadow: 0 0 6px rgba(112, 214, 255, 0.45);
+}
+
+.layers-panel__name {
+  flex: 1;
+  text-align: left;
+  letter-spacing: 0.01em;
+}
+
+.layers-panel__glyph-count {
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.layers-panel__action {
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}

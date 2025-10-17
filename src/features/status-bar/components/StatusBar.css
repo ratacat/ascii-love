@@ -1,0 +1,55 @@
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.65rem 1.5rem;
+  border-top: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.status-bar__section {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.status-bar__label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.status-bar__value {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bar__presets {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.status-bar__preset {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font: inherit;
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.status-bar__preset--active {
+  border-color: rgba(112, 214, 255, 0.35);
+  background: rgba(112, 214, 255, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+@media (max-width: 768px) {
+  .status-bar {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+}

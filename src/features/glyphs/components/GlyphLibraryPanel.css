@@ -1,0 +1,70 @@
+.glyph-library {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.glyph-library__tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.glyph-library__tab {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.glyph-library__tab--active {
+  background: rgba(112, 214, 255, 0.18);
+  border-color: rgba(112, 214, 255, 0.35);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.glyph-library__description {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.glyph-library__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 0.35rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  max-height: 220px;
+}
+
+.glyph-library__cell {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.glyph-library__cell:hover {
+  transform: translateY(-2px);
+  border-color: rgba(112, 214, 255, 0.4);
+}
+
+.glyph-library__footer {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
+}

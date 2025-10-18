@@ -26,6 +26,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+.status-bar__value--glyph {
+  font-family: 'Fira Code', 'Menlo', 'SFMono-Regular', monospace;
+  font-size: 0.9rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.status-bar__value--muted {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+}
+
 .status-bar__presets {
   display: inline-flex;
   gap: 0.25rem;

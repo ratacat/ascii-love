@@ -13,11 +13,23 @@
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 18rem 1fr 18rem;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: minmax(16rem, 22vw) minmax(0, 1fr) minmax(16rem, 22vw);
   gap: 1rem;
   padding: 1.5rem 1.75rem;
   align-items: stretch;
-  overflow: hidden;
+  justify-items: stretch;
+  min-height: 0;
+  min-width: 0;
+}
+
+.workspace-grid[data-layout='reference'] {
+  grid-template-columns: minmax(14rem, 20vw) minmax(0, 1fr) minmax(18rem, 24vw);
+}
+
+.workspace-grid[data-layout='animation'] {
+  grid-template-columns: minmax(16rem, 22vw) minmax(0, 1fr) minmax(12rem, 18vw);
 }
 
 .side-panel {
@@ -25,6 +37,8 @@
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
+  height: 100%;
+  overflow: auto;
 }
 
 .canvas-stage {

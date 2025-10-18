@@ -2,6 +2,8 @@ import './GlyphLibraryPanel.css'
 
 import { useState } from 'react'
 
+import { useEditorStore } from '@shared/state/editorStore'
+
 interface GlyphSheet {
   id: string
   label: string
@@ -32,6 +34,9 @@ const GLYPH_SHEETS: GlyphSheet[] = [
 
 export function GlyphLibraryPanel() {
   const [activeSheet, setActiveSheet] = useState<GlyphSheet>(GLYPH_SHEETS[0])
+  const activeGlyphChar = useEditorStore((state) => state.activeGlyphChar)
+  const setActiveGlyph = useEditorStore((state) => state.setActiveGlyph)
+  const setCursorMode = useEditorStore((state) => state.setCursorMode)
 
   return (
     <div className="glyph-library">
@@ -62,6 +67,12 @@ export function GlyphLibraryPanel() {
             type="button"
             className="glyph-library__cell"
             aria-label={`Queue glyph ${glyph}`}
+            aria-pressed={glyph === activeGlyphChar}
+            data-active={glyph === activeGlyphChar || undefined}
+            onClick={() => {
+              setActiveGlyph(glyph)
+              setCursorMode('place')
+            }}
           >
             {glyph}
           </button>

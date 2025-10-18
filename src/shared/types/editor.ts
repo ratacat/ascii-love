@@ -17,8 +17,11 @@ export interface GlyphInstance {
   position: Vec2
   transform: GlyphTransform
   paletteId: string
+  swatchId: string
   groupIds: string[]
   locked: boolean
+  foreground?: string
+  background?: string
 }
 
 export interface CanvasLayer {
@@ -120,6 +123,8 @@ export interface EditorState {
   selection: SelectionState
   layout: LayoutState
   preferences: EditorPreferences
+  activeGlyphChar?: string
   activePaletteId?: string
+  activeSwatchId?: string
   activeLayerId?: string
 }

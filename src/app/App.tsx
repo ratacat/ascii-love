@@ -8,12 +8,19 @@ import { PalettePanel } from '@features/palette/components/PalettePanel'
 import { StatusBar } from '@features/status-bar/components/StatusBar'
 import { Toolbar } from '@features/toolbar/components/Toolbar'
 import { PanelChrome } from '@shared/ui/PanelChrome'
+import { useEditorHotkeys } from '@shared/state/useEditorHotkeys'
+import { useEditorPersistence } from '@shared/state/useEditorPersistence'
+import { useEditorStore } from '@shared/state/editorStore'
 
 export function App() {
+  useEditorHotkeys()
+  useEditorPersistence()
+  const activeLayoutPreset = useEditorStore((state) => state.layout.activePreset)
+
   return (
     <div className="app-shell">
       <Toolbar />
-      <div className="workspace-grid">
+      <div className="workspace-grid" data-layout={activeLayoutPreset}>
         <aside className="side-panel side-panel--left">
           <PanelChrome id="layers" title="Layers">
             <LayersPanel />

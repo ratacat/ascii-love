@@ -8,13 +8,18 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.layers-panel__row {
   display: flex;
-  flex-direction: column;
   gap: 0.4rem;
+  align-items: center;
 }
 
 .layers-panel__item {
-  width: 100%;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 0.65rem;
@@ -30,8 +35,10 @@
   font-size: 0.8rem;
 }
 
-.layers-panel__item:hover {
+.layers-panel__item:hover,
+.layers-panel__item:focus-visible {
   border-color: rgba(255, 255, 255, 0.12);
+  outline: none;
 }
 
 .layers-panel__item--active {
@@ -39,14 +46,16 @@
   border-color: rgba(112, 214, 255, 0.42);
 }
 
-.layers-panel__visibility {
-  font-size: 0.65rem;
-  color: rgba(255, 255, 255, 0.35);
+.layers-panel__visibility-indicator {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
 }
 
-.layers-panel__visibility--on {
-  color: rgba(112, 214, 255, 0.85);
-  text-shadow: 0 0 6px rgba(112, 214, 255, 0.45);
+.layers-panel__visibility-indicator--on {
+  background: rgba(112, 214, 255, 0.9);
+  box-shadow: 0 0 8px rgba(112, 214, 255, 0.35);
 }
 
 .layers-panel__name {
@@ -58,6 +67,35 @@
 .layers-panel__glyph-count {
   font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.6);
+}
+
+.layers-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.layers-panel__action-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: border 120ms ease, background 120ms ease;
+}
+
+.layers-panel__action-button:hover,
+.layers-panel__action-button:focus-visible {
+  border-color: rgba(112, 214, 255, 0.42);
+  background: rgba(112, 214, 255, 0.16);
+  color: rgba(112, 214, 255, 0.85);
+  outline: none;
 }
 
 .layers-panel__action {

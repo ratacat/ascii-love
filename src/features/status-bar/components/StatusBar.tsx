@@ -14,6 +14,16 @@ export function StatusBar() {
   const selectionCount = useEditorStore((state) => state.selection.glyphIds.length)
   const activePreset = useEditorStore((state) => state.layout.activePreset)
   const setLayoutPreset = useEditorStore((state) => state.setLayoutPreset)
+  const activeGlyphChar = useEditorStore((state) => state.activeGlyphChar)
+  const activePaletteName = useEditorStore((state) => {
+    const palette = state.document.palettes.find((item) => item.id === state.activePaletteId)
+    return palette?.name ?? 'Default'
+  })
+  const activeSwatchName = useEditorStore((state) => {
+    const palette = state.document.palettes.find((item) => item.id === state.activePaletteId)
+    const swatch = palette?.swatches.find((item) => item.id === state.activeSwatchId)
+    return swatch?.name ?? 'Primary'
+  })
 
   return (
     <footer className="status-bar">
@@ -24,6 +34,17 @@ export function StatusBar() {
       <div className="status-bar__section">
         <span className="status-bar__label">Selection</span>
         <span className="status-bar__value">{selectionCount} glyph(s)</span>
+      </div>
+      <div className="status-bar__section">
+        <span className="status-bar__label">Glyph</span>
+        <span className="status-bar__value status-bar__value--glyph">
+          {activeGlyphChar ?? '—'}
+        </span>
+      </div>
+      <div className="status-bar__section">
+        <span className="status-bar__label">Palette</span>
+        <span className="status-bar__value">{activePaletteName}</span>
+        <span className="status-bar__value status-bar__value--muted">{activeSwatchName}</span>
       </div>
       <div className="status-bar__section">
         <span className="status-bar__label">Layout</span>

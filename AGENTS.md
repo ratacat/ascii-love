@@ -1,1 +1,0 @@
-Make sure you keep `docs/design-doc` file in mind.

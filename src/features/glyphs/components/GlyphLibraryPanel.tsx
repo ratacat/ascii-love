@@ -3,34 +3,8 @@ import './GlyphLibraryPanel.css'
 import { useState } from 'react'
 
 import { useEditorStore } from '@shared/state/editorStore'
-
-interface GlyphSheet {
-  id: string
-  label: string
-  description: string
-  glyphs: string[]
-}
-
-const GLYPH_SHEETS: GlyphSheet[] = [
-  {
-    id: 'cp437',
-    label: 'CP-437 Core',
-    description: 'Classic DOS legacy set with heavy block and line glyphs.',
-    glyphs: ['█', '▓', '▒', '░', '╬', '╪', '╓', '╖', '╫', '╫', '╬', '║', '═', '╬', '╔', '╗', '╚', '╝'],
-  },
-  {
-    id: 'boxdrawing',
-    label: 'Box Drawing',
-    description: 'Precise UI structural glyphs for frames, dividers and callouts.',
-    glyphs: ['─', '━', '│', '┃', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '╱', '╲', '╳', '╭', '╮', '╯', '╰'],
-  },
-  {
-    id: 'ornate',
-    label: 'Ornate',
-    description: 'Accents suited for illuminated manuscript motifs.',
-    glyphs: ['✶', '✷', '✺', '✹', '✴', '❋', '❉', '❖', '❂', '✢', '✣', '✥', '✦', '✧', '☆', '★', '☼', '☾', '☽'],
-  },
-]
+import { GLYPH_SHEETS } from '@shared/constants/glyphSheets'
+import type { GlyphSheet } from '@shared/constants/glyphSheets'
 
 export function GlyphLibraryPanel() {
   const [activeSheet, setActiveSheet] = useState<GlyphSheet>(GLYPH_SHEETS[0])

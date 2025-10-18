@@ -164,7 +164,7 @@ export function CanvasViewport() {
       const { glyph, layerZ } = entry
       const isSelected = selection.glyphIds.includes(glyph.id)
       const palette = paletteMap.get(glyph.paletteId)
-      const swatch = palette?.get(glyph.swatchId)
+      const swatch = glyph.swatchId ? palette?.get(glyph.swatchId) : undefined
       const foreground = glyph.foreground ?? swatch?.foreground ?? 'rgba(255, 255, 255, 0.9)'
 
       const style: CSSProperties = {

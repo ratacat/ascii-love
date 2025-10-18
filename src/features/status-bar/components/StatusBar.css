@@ -40,27 +40,6 @@
   font-size: 0.72rem;
 }
 
-.status-bar__presets {
-  display: inline-flex;
-  gap: 0.25rem;
-}
-
-.status-bar__preset {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: inherit;
-  font: inherit;
-  padding: 0.25rem 0.8rem;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.status-bar__preset--active {
-  border-color: rgba(112, 214, 255, 0.35);
-  background: rgba(112, 214, 255, 0.18);
-  color: rgba(255, 255, 255, 0.92);
-}
-
 @media (max-width: 768px) {
   .status-bar {
     flex-wrap: wrap;

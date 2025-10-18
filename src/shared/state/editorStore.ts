@@ -115,6 +115,36 @@ const getDefaultSwatchId = (document: CanvasDocument, paletteId?: string): strin
   return palette?.swatches[0]?.id
 }
 
+const syncActiveColor = (state: EditorState) => {
+  const selectionIds = state.selection.glyphIds
+  if (selectionIds.length) {
+    const firstGlyph = getGlyphById(state.document, selectionIds[0])
+    const glyphColor = normalizeColor(firstGlyph?.foreground)
+    if (glyphColor) {
+      state.activeColor = glyphColor
+      const palette = getPaletteById(state.document, state.activePaletteId)
+      const matchingSwatch = palette?.swatches.find(
+        (swatch) => normalizeColor(swatch.foreground) === glyphColor,
+      )
+      state.activeSwatchId = matchingSwatch?.id ?? state.activeSwatchId
+      return
+    }
+  }
+
+  const palette = getPaletteById(state.document, state.activePaletteId) ?? state.document.palettes[0]
+  if (!palette) {
+    state.activeColor = '#FFFFFF'
+    return
+  }
+
+  const swatch = palette.swatches.find((item) => item.id === state.activeSwatchId) ?? palette.swatches[0]
+  const paletteColor = normalizeColor(swatch?.foreground)
+  if (paletteColor) {
+    state.activeColor = paletteColor
+    state.activeSwatchId = swatch?.id ?? state.activeSwatchId
+  }
+}
+
 const computeSelectionBounds = (
   document: CanvasDocument,
   glyphIds: SelectionState['glyphIds'],
@@ -198,6 +228,33 @@ const findGlyphEntry = (
   return undefined
 }
 
+const normalizeColor = (value?: string): string | undefined => {
+  if (!value) {
+    return undefined
+  }
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  let candidate = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+  if (/^#[0-9a-fA-F]{3}$/.test(candidate)) {
+    const [, r, g, b] = candidate
+    candidate = `#${r}${r}${g}${g}${b}${b}`
+  }
+  if (!/^#[0-9a-fA-F]{6}$/.test(candidate)) {
+    return undefined
+  }
+  return candidate.toUpperCase()
+}
+
+const getGlyphById = (document: CanvasDocument, glyphId: string): GlyphInstance | undefined => {
+  const entry = findGlyphEntry(document, glyphId)
+  if (!entry) {
+    return undefined
+  }
+  return document.layers[entry.layerIndex].glyphs[entry.glyphIndex]
+}
+
 const recalcSelectionMeta = (draft: EditorState) => {
   draft.selection.bounds = computeSelectionBounds(draft.document, draft.selection.glyphIds)
   draft.selection.layerIds = uniqueLayerIdsForGlyphs(draft.document, draft.selection.glyphIds)
@@ -214,6 +271,7 @@ const applyLayoutPresetVisibility = (layout: LayoutState, preset: LayoutPreset) 
 
 const initialDocument = createInitialDocument()
 const initialPalette = initialDocument.palettes[0]
+const initialColor = normalizeColor(initialPalette?.swatches[0]?.foreground) ?? '#FFFFFF'
 const initialState: EditorState = {
   document: initialDocument,
   cursor: {
@@ -245,6 +303,7 @@ const initialState: EditorState = {
   activePaletteId: initialPalette?.id,
   activeSwatchId: initialPalette?.swatches[0]?.id,
   activeLayerId: initialDocument.layers[0]?.id,
+  activeColor: initialColor,
 }
 
 export interface EditorStore extends EditorState {
@@ -254,16 +313,19 @@ export interface EditorStore extends EditorState {
   loadLayoutFromPersistence: (layout: LayoutState) => void
   setActiveLayer: (layerId: string) => void
   setActivePalette: (paletteId: string) => void
-  setActiveSwatch: (swatchId: string) => void
+  setActiveSwatch: (swatchId?: string) => void
   setActiveGlyph: (glyphChar?: string) => void
   setPreferences: (preferences: Partial<EditorPreferences>) => void
   toggleGrid: () => void
   toggleSnapping: () => void
+  setActiveColor: (color: string) => void
+  applyColorToSelection: (color: string) => void
   updateSwatch: (paletteId: string, swatchId: string, updates: Partial<Omit<PaletteSwatch, 'id'>>) => void
   addSwatch: (
     paletteId: string,
-    swatch: Pick<PaletteSwatch, 'foreground' | 'background' | 'name'> & Partial<Pick<PaletteSwatch, 'accent'>>,
+    swatch: Pick<PaletteSwatch, 'foreground'> & Partial<Pick<PaletteSwatch, 'name' | 'background' | 'accent'>>,
   ) => void
+  removeSwatch: (paletteId: string, swatchId: string) => void
   placeGlyph: (position: Vec2, options?: Partial<Pick<GlyphInstance, 'char' | 'paletteId' | 'swatchId'>>) => void
   updateGlyphPosition: (glyphId: string, position: Vec2) => void
   removeGlyph: (glyphId: string) => void
@@ -321,10 +383,61 @@ export const useEditorStore = create<EditorStore>()(
       set((draft) => {
         draft.activePaletteId = paletteId
         draft.activeSwatchId = getDefaultSwatchId(draft.document, paletteId)
+        syncActiveColor(draft)
       }),
     setActiveSwatch: (swatchId) =>
       set((draft) => {
         draft.activeSwatchId = swatchId
+        if (swatchId) {
+          const palette = getPaletteById(draft.document, draft.activePaletteId)
+          const swatch = palette?.swatches.find((item) => item.id === swatchId)
+          const color = normalizeColor(swatch?.foreground)
+          if (color) {
+            draft.activeColor = color
+          }
+        } else {
+          syncActiveColor(draft)
+        }
+      }),
+    setActiveColor: (color) =>
+      set((draft) => {
+        const normalized = normalizeColor(color)
+        if (!normalized) {
+          return
+        }
+        draft.activeColor = normalized
+        const palette = getPaletteById(draft.document, draft.activePaletteId)
+        const matchingSwatch = palette?.swatches.find(
+          (swatch) => normalizeColor(swatch.foreground) === normalized,
+        )
+        draft.activeSwatchId = matchingSwatch?.id ?? draft.activeSwatchId
+      }),
+    applyColorToSelection: (color) =>
+      set((draft) => {
+        const normalized = normalizeColor(color)
+        if (!normalized) {
+          return
+        }
+        const palette = getPaletteById(draft.document, draft.activePaletteId)
+        const matchingSwatch = palette?.swatches.find(
+          (swatch) => normalizeColor(swatch.foreground) === normalized,
+        )
+
+        draft.selection.glyphIds.forEach((glyphId) => {
+          const entry = findGlyphEntry(draft.document, glyphId)
+          if (!entry) {
+            return
+          }
+          const glyph = draft.document.layers[entry.layerIndex].glyphs[entry.glyphIndex]
+          glyph.foreground = normalized
+          glyph.swatchId = matchingSwatch?.id
+        })
+
+        draft.activeColor = normalized
+        if (matchingSwatch) {
+          draft.activeSwatchId = matchingSwatch.id
+        }
+        syncActiveColor(draft)
       }),
     setActiveGlyph: (glyphChar) =>
       set((draft) => {
@@ -356,7 +469,39 @@ export const useEditorStore = create<EditorStore>()(
         if (swatchIndex === -1) {
           return
         }
-        palette.swatches[swatchIndex] = { ...palette.swatches[swatchIndex], ...updates }
+        const swatch = palette.swatches[swatchIndex]
+        const next = { ...swatch }
+        if (updates.name !== undefined) {
+          next.name = updates.name
+        }
+        if (updates.foreground !== undefined) {
+          const normalized = normalizeColor(updates.foreground)
+          if (normalized) {
+            next.foreground = normalized
+          }
+        }
+        if (updates.background !== undefined) {
+          next.background = updates.background
+        }
+        if (updates.accent !== undefined) {
+          next.accent = updates.accent
+        }
+        palette.swatches[swatchIndex] = next
+
+        draft.document.layers.forEach((layer) => {
+          layer.glyphs.forEach((glyph) => {
+            if (glyph.swatchId === swatchId) {
+              glyph.foreground = normalizeColor(next.foreground) ?? glyph.foreground
+            }
+          })
+        })
+
+        if (draft.activeSwatchId === swatchId) {
+          const color = normalizeColor(next.foreground)
+          if (color) {
+            draft.activeColor = color
+          }
+        }
       }),
     addSwatch: (paletteId, swatch) =>
       set((draft) => {
@@ -364,10 +509,14 @@ export const useEditorStore = create<EditorStore>()(
         if (!palette) {
           return
         }
+        const color = normalizeColor(swatch.foreground)
+        if (!color) {
+          return
+        }
         const newSwatch: PaletteSwatch = {
           id: generateId('swatch'),
-          name: swatch.name || `Swatch ${palette.swatches.length + 1}`,
-          foreground: swatch.foreground,
+          name: swatch.name || color,
+          foreground: color,
           background: swatch.background,
           accent: swatch.accent,
           locked: false,
@@ -375,6 +524,33 @@ export const useEditorStore = create<EditorStore>()(
         palette.swatches.push(newSwatch)
         draft.activePaletteId = paletteId
         draft.activeSwatchId = newSwatch.id
+        draft.activeColor = color
+      }),
+    removeSwatch: (paletteId, swatchId) =>
+      set((draft) => {
+        const palette = getPaletteById(draft.document, paletteId)
+        if (!palette) {
+          return
+        }
+        const index = palette.swatches.findIndex((item) => item.id === swatchId)
+        if (index === -1) {
+          return
+        }
+        palette.swatches.splice(index, 1)
+
+        draft.document.layers.forEach((layer) => {
+          layer.glyphs.forEach((glyph) => {
+            if (glyph.swatchId === swatchId) {
+              glyph.swatchId = undefined
+            }
+          })
+        })
+
+        if (draft.activeSwatchId === swatchId) {
+          draft.activeSwatchId = palette.swatches[0]?.id
+        }
+
+        syncActiveColor(draft)
       }),
     placeGlyph: (position, options) =>
       set((draft) => {
@@ -388,17 +564,17 @@ export const useEditorStore = create<EditorStore>()(
           return
         }
 
-        const paletteId = options?.paletteId ?? draft.activePaletteId
-        const palette = getPaletteById(draft.document, paletteId ?? draft.activePaletteId)
-        const swatchId =
-          options?.swatchId ?? draft.activeSwatchId ?? palette?.swatches[0]?.id ?? getDefaultSwatchId(draft.document, paletteId)
+        const paletteId = options?.paletteId ?? draft.activePaletteId ?? draft.document.palettes[0]?.id
+        const palette = paletteId ? getPaletteById(draft.document, paletteId) : undefined
+        const swatchId = options?.swatchId ?? draft.activeSwatchId
         const char = options?.char ?? draft.activeGlyphChar
 
-        if (!char || !palette || !swatchId) {
+        if (!char || !palette) {
           return
         }
 
-        const swatch = palette.swatches.find((item) => item.id === swatchId)
+        const swatch = swatchId ? palette.swatches.find((item) => item.id === swatchId) : undefined
+        const color = normalizeColor(draft.activeColor) ?? normalizeColor(swatch?.foreground) ?? '#FFFFFF'
 
         const glyph: GlyphInstance = {
           id: generateId('glyph'),
@@ -410,10 +586,10 @@ export const useEditorStore = create<EditorStore>()(
             rotation: 0,
           },
           paletteId: palette.id,
-          swatchId,
+          swatchId: swatch?.id,
           groupIds: [],
           locked: false,
-          foreground: swatch?.foreground,
+          foreground: color,
           background: swatch?.background,
         }
 
@@ -452,6 +628,7 @@ export const useEditorStore = create<EditorStore>()(
           draft.selection.glyphIds = draft.selection.glyphIds.filter((id) => id !== glyphId)
           recalcSelectionMeta(draft)
         }
+        syncActiveColor(draft)
       }),
     selectGlyphs: (glyphIds, options) =>
       set((draft) => {
@@ -466,6 +643,7 @@ export const useEditorStore = create<EditorStore>()(
         }
         draft.selection.groupIds = deriveGroupIdsForGlyphs(draft.document, draft.selection.glyphIds)
         recalcSelectionMeta(draft)
+        syncActiveColor(draft)
       }),
     clearSelection: () =>
       set((draft) => {
@@ -473,6 +651,7 @@ export const useEditorStore = create<EditorStore>()(
         draft.selection.groupIds = []
         draft.selection.layerIds = draft.activeLayerId ? [draft.activeLayerId] : []
         draft.selection.bounds = undefined
+        syncActiveColor(draft)
       }),
     setSelection: (selection) =>
       set((draft) => {
@@ -483,6 +662,7 @@ export const useEditorStore = create<EditorStore>()(
             draft.selection.groupIds = deriveGroupIdsForGlyphs(draft.document, draft.selection.glyphIds)
           }
         }
+        syncActiveColor(draft)
       }),
     addLayer: (name) =>
       set((draft) => {
@@ -603,9 +783,13 @@ export const useEditorStore = create<EditorStore>()(
         draft.activePaletteId = draft.document.palettes[0]?.id
         draft.activeSwatchId = getDefaultSwatchId(draft.document, draft.activePaletteId)
         draft.activeGlyphChar = DEFAULT_GLYPH
+        const palette = getPaletteById(draft.document, draft.activePaletteId)
+        const color = normalizeColor(palette?.swatches[0]?.foreground) ?? '#FFFFFF'
+        draft.activeColor = color
         draft.cursor = { ...initialState.cursor }
         draft.preferences = { ...initialState.preferences }
         draft.layout = structuredClone(initialState.layout)
+        syncActiveColor(draft)
       }),
   })),
 )

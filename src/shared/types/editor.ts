@@ -17,7 +17,7 @@ export interface GlyphInstance {
   position: Vec2
   transform: GlyphTransform
   paletteId: string
-  swatchId: string
+  swatchId?: string
   groupIds: string[]
   locked: boolean
   foreground?: string
@@ -127,4 +127,5 @@ export interface EditorState {
   activePaletteId?: string
   activeSwatchId?: string
   activeLayerId?: string
+  activeColor: string
 }

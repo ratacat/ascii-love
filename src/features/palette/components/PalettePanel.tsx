@@ -80,7 +80,7 @@ export function PalettePanel() {
 
   const handleCreateSwatch = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value
-    event.target.value = ''
+    event.target.value = '#ffffff'
     if (!pendingPaletteId || !value) {
       setPendingPaletteId(null)
       return

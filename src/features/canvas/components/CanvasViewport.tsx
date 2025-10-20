@@ -1,13 +1,12 @@
 import './CanvasViewport.css'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 
 import { useEditorStore } from '@shared/state/editorStore'
 import { ExportMenu } from '@features/export/components/ExportMenu'
 import type { GlyphInstance, PaletteSwatch, Vec2 } from '@shared/types/editor'
-
-const CANVAS_UNIT_PX = 24
+import { BASE_UNIT_PX } from '@shared/constants/canvas'
 
 export function CanvasViewport() {
   const document = useEditorStore((state) => state.document)
@@ -19,10 +18,26 @@ export function CanvasViewport() {
   const selection = useEditorStore((state) => state.selection)
   const placeGlyph = useEditorStore((state) => state.placeGlyph)
   const selectGlyphs = useEditorStore((state) => state.selectGlyphs)
-  const clearSelection = useEditorStore((state) => state.clearSelection)
+  const viewport = useEditorStore((state) => state.viewport)
+  const panViewport = useEditorStore((state) => state.panViewport)
+  const zoomViewport = useEditorStore((state) => state.zoomViewport)
+  const nudgeCursorRotation = useEditorStore((state) => state.nudgeCursorRotation)
 
+  const unitSize = BASE_UNIT_PX * viewport.scale
   const [hoveredPoint, setHoveredPoint] = useState<Vec2 | null>(null)
+  const [marquee, setMarquee] = useState<{
+    origin: Vec2
+    current: Vec2
+    additive: boolean
+  } | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const marqueeBaseSelectionRef = useRef<string[]>([])
+
+  const stageDimensions = useMemo(() => {
+    const width = document.width * unitSize
+    const height = document.height * unitSize
+    return { width, height }
+  }, [document.height, document.width, unitSize])
 
   const activeLayer = useMemo(
     () => document.layers.find((layer) => layer.id === activeLayerId),
@@ -65,8 +80,8 @@ export function CanvasViewport() {
       if (!rect) {
         return null
       }
-      const x = (event.clientX - rect.left) / CANVAS_UNIT_PX
-      const y = (event.clientY - rect.top) / CANVAS_UNIT_PX
+      const x = (event.clientX - rect.left) / unitSize
+      const y = (event.clientY - rect.top) / unitSize
 
       if (Number.isNaN(x) || Number.isNaN(y)) {
         return null
@@ -80,7 +95,7 @@ export function CanvasViewport() {
         y: Math.min(Math.max(y, 0), maxY),
       }
     },
-    [document.height, document.width],
+    [document.height, document.width, unitSize],
   )
 
   const applySnapping = useCallback(
@@ -104,23 +119,51 @@ export function CanvasViewport() {
 
   const handleStageInteraction = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (cursor.mode !== 'place') {
+        return
+      }
       const position = pointerToDocumentPosition(event)
       if (!position) {
         return
       }
-
       const adjusted = applySnapping(position)
+      placeGlyph(adjusted)
+    },
+    [applySnapping, cursor.mode, placeGlyph, pointerToDocumentPosition],
+  )
 
-      if (cursor.mode === 'place') {
-        placeGlyph(adjusted)
-        return
+  const updateMarqueeSelection = useCallback(
+    (marqueeState: { origin: Vec2; current: Vec2; additive: boolean }) => {
+      const minX = Math.min(marqueeState.origin.x, marqueeState.current.x)
+      const maxX = Math.max(marqueeState.origin.x, marqueeState.current.x)
+      const minY = Math.min(marqueeState.origin.y, marqueeState.current.y)
+      const maxY = Math.max(marqueeState.origin.y, marqueeState.current.y)
+
+      const touchedIds: string[] = []
+      for (const entry of glyphEntries) {
+        const glyph = entry.glyph
+        const glyphMinX = glyph.position.x
+        const glyphMaxX = glyph.position.x + 1
+        const glyphMinY = glyph.position.y
+        const glyphMaxY = glyph.position.y + 1
+
+        const intersects =
+          glyphMinX <= maxX && glyphMaxX >= minX && glyphMinY <= maxY && glyphMaxY >= minY
+
+        if (intersects) {
+          touchedIds.push(glyph.id)
+        }
       }
 
-      if (cursor.mode === 'select') {
-        clearSelection()
+      if (marqueeState.additive) {
+        const base = new Set(marqueeBaseSelectionRef.current)
+        touchedIds.forEach((id) => base.add(id))
+        selectGlyphs(Array.from(base))
+      } else {
+        selectGlyphs(touchedIds)
       }
     },
-    [applySnapping, clearSelection, cursor.mode, placeGlyph, pointerToDocumentPosition],
+    [glyphEntries, selectGlyphs],
   )
 
   const handleGlyphInteraction = useCallback(
@@ -143,20 +186,199 @@ export function CanvasViewport() {
     [applySnapping, cursor.mode, placeGlyph, pointerToDocumentPosition, selectGlyphs],
   )
 
-  const handlePointerMove = useCallback(
+  const handleStageMouseDown = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0 || cursor.mode !== 'select') {
+        return
+      }
+      if (event.target !== event.currentTarget) {
+        return
+      }
       const position = pointerToDocumentPosition(event)
-      setHoveredPoint(position)
+      if (!position) {
+        return
+      }
+      event.preventDefault()
+      const additive = event.shiftKey
+      marqueeBaseSelectionRef.current = additive ? [...selection.glyphIds] : []
+      setMarquee({
+        origin: position,
+        current: position,
+        additive,
+      })
     },
-    [pointerToDocumentPosition],
+    [cursor.mode, pointerToDocumentPosition, selection.glyphIds],
   )
 
-  const stageDimensions = useMemo(
-    () => ({
-      width: document.width * CANVAS_UNIT_PX,
-      height: document.height * CANVAS_UNIT_PX,
-    }),
-    [document.height, document.width],
+  const finalizeMarquee = useCallback(
+    (event?: MouseEvent | React.MouseEvent) => {
+      setMarquee((prev) => {
+        if (!prev) {
+          return prev
+        }
+        let nextState = prev
+        if (event) {
+          const position = pointerToDocumentPosition(event)
+          if (position) {
+            nextState = { ...prev, current: position }
+          }
+        }
+        updateMarqueeSelection(nextState)
+        marqueeBaseSelectionRef.current = []
+        return null
+      })
+    },
+    [pointerToDocumentPosition, updateMarqueeSelection],
+  )
+
+  useEffect(() => {
+    const handleWindowMouseUp = (event: MouseEvent) => finalizeMarquee(event)
+    window.addEventListener('mouseup', handleWindowMouseUp)
+    return () => window.removeEventListener('mouseup', handleWindowMouseUp)
+  }, [finalizeMarquee])
+
+const handlePointerMove = useCallback(
+  (event: React.MouseEvent<HTMLDivElement>) => {
+    const position = pointerToDocumentPosition(event)
+    setHoveredPoint(position)
+
+    if (!marquee || !position) {
+      return
+    }
+
+    event.preventDefault()
+    setMarquee((previous) => {
+      if (!previous) {
+        return previous
+      }
+      const next = { ...previous, current: position }
+      updateMarqueeSelection(next)
+      return next
+    })
+  },
+  [marquee, pointerToDocumentPosition, updateMarqueeSelection],
+)
+
+  useEffect(() => {
+    const node = stageRef.current
+    if (!node) {
+      return
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      const container = node.parentElement ?? node
+      const containerRect = container.getBoundingClientRect()
+
+      if (event.shiftKey) {
+        event.preventDefault()
+        if (cursor.mode === 'place') {
+          const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+          const delta = horizontal ? event.deltaX : event.deltaY
+          const rotationIntensity = 0.2
+          nudgeCursorRotation(-delta * rotationIntensity)
+        }
+        return
+      }
+
+      const docAnchor = pointerToDocumentPosition(event)
+      if (!docAnchor) {
+        return
+      }
+      const anchorBase = {
+        x: docAnchor.x * unitSize,
+        y: docAnchor.y * unitSize,
+      }
+
+      if (event.metaKey) {
+        event.preventDefault()
+        const zoomIntensity = 0.0015
+        const scaleFactor = Math.exp(-event.deltaY * zoomIntensity)
+        zoomViewport(scaleFactor, anchorBase)
+        return
+      }
+
+      if (event.ctrlKey) {
+        event.preventDefault()
+        const zoomIntensity = 0.0015
+        const scaleFactor = Math.exp(-event.deltaY * zoomIntensity)
+        zoomViewport(scaleFactor, anchorBase)
+        return
+      }
+
+      event.preventDefault()
+      panViewport({ x: -event.deltaX, y: -event.deltaY })
+    }
+
+    node.addEventListener('wheel', handleWheel, { passive: false })
+    return () => node.removeEventListener('wheel', handleWheel)
+  }, [
+    cursor.mode,
+    nudgeCursorRotation,
+    panViewport,
+    unitSize,
+    zoomViewport,
+  ])
+
+  const marqueeRect = useMemo(() => {
+    if (!marquee || (marquee.origin.x === marquee.current.x && marquee.origin.y === marquee.current.y)) {
+      return null
+    }
+
+    const left = Math.min(marquee.origin.x, marquee.current.x) * unitSize
+    const top = Math.min(marquee.origin.y, marquee.current.y) * unitSize
+    return {
+      left,
+      top,
+      width: Math.abs(marquee.origin.x - marquee.current.x) * unitSize,
+      height: Math.abs(marquee.origin.y - marquee.current.y) * unitSize,
+    }
+  }, [marquee, unitSize])
+
+  const previewPoint = hoveredPoint && cursor.mode === 'place' ? applySnapping(hoveredPoint) : null
+
+  const crosshairPoint = useMemo(() => {
+    if (!hoveredPoint) {
+      return undefined
+    }
+    if (cursor.mode === 'place' && previewPoint) {
+      return previewPoint
+    }
+    return cursor.snapped ? applySnapping(hoveredPoint) : hoveredPoint
+  }, [cursor.mode, cursor.snapped, hoveredPoint, previewPoint, applySnapping])
+
+  const crosshairBounds = useMemo(() => {
+    if (!cursor.crosshairEnabled || !crosshairPoint) {
+      return undefined
+    }
+
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+    const maxX = Math.max(document.width - 1, 0)
+    const maxY = Math.max(document.height - 1, 0)
+    const clampedX = clamp(crosshairPoint.x, 0, maxX)
+    const clampedY = clamp(crosshairPoint.y, 0, maxY)
+    const left = Math.round(clampedX * unitSize)
+    const top = Math.round(clampedY * unitSize)
+
+    return {
+      top,
+      bottom: top + unitSize,
+      left,
+      right: left + unitSize,
+    }
+  }, [crosshairPoint, cursor.crosshairEnabled, document.height, document.width, unitSize])
+
+  const canvasStyle = useMemo(
+    () =>
+      ({
+        width: stageDimensions.width,
+        height: stageDimensions.height,
+        transform: `translate3d(${viewport.offset.x}px, ${viewport.offset.y}px, 0)`,
+        transformOrigin: '0 0',
+        willChange: 'transform',
+        '--canvas-unit-size': `${unitSize}px`,
+        '--glyph-font-size': `${unitSize * 0.85}px`,
+      }) as CSSProperties & Record<string, string>,
+    [stageDimensions.height, stageDimensions.width, unitSize, viewport.offset.x, viewport.offset.y],
   )
 
   const renderGlyph = useCallback(
@@ -168,11 +390,39 @@ export function CanvasViewport() {
       const foreground = glyph.foreground ?? swatch?.foreground ?? 'rgba(255, 255, 255, 0.9)'
 
       const style: CSSProperties = {
-        left: glyph.position.x * CANVAS_UNIT_PX,
-        top: glyph.position.y * CANVAS_UNIT_PX,
+        left: Math.round(glyph.position.x * unitSize),
+        top: Math.round(glyph.position.y * unitSize),
         zIndex: layerZ + 1,
         color: foreground,
+        width: unitSize,
+        height: unitSize,
+        fontSize: `${unitSize * 0.85}px`,
       }
+      const transformParts: string[] = []
+      const translation = glyph.transform?.translation
+      const scale = glyph.transform?.scale
+      const rotation = glyph.transform?.rotation ?? 0
+
+      if (translation && (translation.x !== 0 || translation.y !== 0)) {
+        transformParts.push(
+          `translate(${translation.x * unitSize}px, ${translation.y * unitSize}px)`,
+        )
+      }
+
+      if (rotation) {
+        transformParts.push(`rotate(${rotation}deg)`)
+      }
+
+      const scaleX = scale?.x ?? 1
+      const scaleY = scale?.y ?? 1
+      if (scaleX !== 1 || scaleY !== 1) {
+        transformParts.push(`scale(${scaleX}, ${scaleY})`)
+      }
+
+      if (transformParts.length) {
+        style.transform = transformParts.join(' ')
+      }
+      style.transformOrigin = '50% 50%'
 
       return (
         <button
@@ -196,10 +446,8 @@ export function CanvasViewport() {
         </button>
       )
     },
-    [handleGlyphInteraction, paletteMap, selection.glyphIds],
+    [handleGlyphInteraction, paletteMap, selection.glyphIds, unitSize],
   )
-
-  const previewPoint = hoveredPoint && cursor.mode === 'place' ? applySnapping(hoveredPoint) : null
   const activePalette = activePaletteId ? paletteMap.get(activePaletteId) : undefined
   const activeSwatch = activeSwatchId ? activePalette?.get(activeSwatchId) : undefined
 
@@ -226,16 +474,6 @@ export function CanvasViewport() {
       </header>
       <div className="canvas-viewport__stage">
         <div
-          className={[
-            'canvas-viewport__surface',
-            cursor.gridEnabled && 'canvas-viewport__surface--grid',
-            cursor.crosshairEnabled && 'canvas-viewport__surface--crosshair',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          role="presentation"
-        />
-        <div
           ref={stageRef}
           className={[
             'canvas-viewport__canvas',
@@ -244,24 +482,78 @@ export function CanvasViewport() {
           ]
             .filter(Boolean)
             .join(' ')}
-          style={
-            {
-              width: stageDimensions.width,
-              height: stageDimensions.height,
-            } as CSSProperties
-          }
+          style={canvasStyle}
           onClick={handleStageInteraction}
+          onMouseDown={handleStageMouseDown}
           onMouseMove={handlePointerMove}
-          onMouseLeave={() => setHoveredPoint(null)}
+          onMouseUp={(event) => finalizeMarquee(event)}
+          onMouseLeave={() => {
+            setHoveredPoint(null)
+          }}
         >
+          <div
+            className={[
+              'canvas-viewport__surface',
+              cursor.gridEnabled && 'canvas-viewport__surface--grid',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            role="presentation"
+          />
+          {marqueeRect ? (
+            <div
+              className="canvas-viewport__marquee"
+              style={{
+                left: marqueeRect.left,
+                top: marqueeRect.top,
+                width: marqueeRect.width,
+                height: marqueeRect.height,
+              }}
+            />
+          ) : null}
+          {crosshairBounds ? (
+            <div className="canvas-viewport__crosshair" aria-hidden>
+              <div
+                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
+                style={{ top: crosshairBounds.top }}
+              />
+              <div
+                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
+                style={{
+                  top: Math.max(
+                    0,
+                    Math.min(stageDimensions.height - 1, crosshairBounds.bottom - 1),
+                  ),
+                }}
+              />
+              <div
+                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
+                style={{ left: crosshairBounds.left }}
+              />
+              <div
+                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
+                style={{
+                  left: Math.max(
+                    0,
+                    Math.min(stageDimensions.width - 1, crosshairBounds.right - 1),
+                  ),
+                }}
+              />
+            </div>
+          ) : null}
           {glyphEntries.map(renderGlyph)}
           {previewPoint && activeGlyphChar ? (
             <div
               className="canvas-viewport__cursor-preview"
               style={{
-                left: previewPoint.x * CANVAS_UNIT_PX,
-                top: previewPoint.y * CANVAS_UNIT_PX,
+                left: Math.round(previewPoint.x * unitSize),
+                top: Math.round(previewPoint.y * unitSize),
                 color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
+                transform: `rotate(${cursor.rotation}deg)`,
+                transformOrigin: '50% 50%',
+                width: unitSize,
+                height: unitSize,
+                fontSize: `${unitSize * 0.85}px`,
               }}
             >
               {activeGlyphChar}

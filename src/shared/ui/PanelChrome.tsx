@@ -19,7 +19,7 @@ export function PanelChrome({ id, title, actions, children }: PanelChromeProps) 
   }
 
   return (
-    <section className="panel" aria-labelledby={`${id}-panel-title`}>
+    <section className="panel" data-panel-id={id} aria-labelledby={`${id}-panel-title`}>
       <header className="panel__header">
         <h2 id={`${id}-panel-title`} className="panel__title">
           {title}

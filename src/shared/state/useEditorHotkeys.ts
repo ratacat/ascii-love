@@ -30,6 +30,39 @@ export function useEditorHotkeys() {
         return
       }
 
+      const rotationMap: Record<string, number | undefined> = {
+        w: 0,
+        d: 90,
+        s: 180,
+        a: 270,
+      }
+
+      const isRotationKey = ['w', 'a', 's', 'd', 'q', 'e'].includes(key)
+      const canRotate = !event.altKey && !event.metaKey && !event.ctrlKey && isRotationKey
+
+      if (canRotate) {
+        event.preventDefault()
+        if (state.cursor.mode !== 'place') {
+          state.setCursorMode('place')
+        }
+
+        const absolute = rotationMap[key]
+        if (typeof absolute === 'number') {
+          state.setCursorRotation(absolute)
+          return
+        }
+
+        if (key === 'q') {
+          state.nudgeCursorRotation(-45)
+          return
+        }
+
+        if (key === 'e') {
+          state.nudgeCursorRotation(45)
+          return
+        }
+      }
+
       for (const tool of TOOLBAR_TOOLS) {
         const hotkey = tool.hotkey.toLowerCase()
 

@@ -26,11 +26,12 @@ body {
   background: var(--color-surface);
   color: var(--color-foreground);
   font-family: var(--font-sans);
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
 }
 
 a {

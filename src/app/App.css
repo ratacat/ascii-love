@@ -3,12 +3,13 @@
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   background: var(--color-surface);
   color: var(--color-foreground);
   font-family: var(--font-sans);
+  overflow: hidden;
 }
 
 .workspace-grid {
@@ -39,6 +40,15 @@
   min-height: 0;
   height: 100%;
   overflow: auto;
+}
+
+.side-panel--left .panel[data-panel-id='glyphLibrary'] {
+  flex: 1;
+}
+
+.side-panel--left .panel[data-panel-id='glyphLibrary'] .panel__body {
+  flex: 1;
+  min-height: 0;
 }
 
 .canvas-stage {

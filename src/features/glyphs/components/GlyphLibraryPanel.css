@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: 0.75rem;
   min-height: 0;
+  flex: 1;
 }
 
 .glyph-library__tabs {
@@ -42,7 +43,8 @@
   gap: 0.35rem;
   overflow-y: auto;
   padding-right: 0.2rem;
-  max-height: 220px;
+  flex: 1;
+  min-height: 0;
 }
 
 .glyph-library__cell {
@@ -54,7 +56,9 @@
   border-radius: 6px;
   border: 1px solid transparent;
   font-size: var(--glyph-font-size);
+  font-family: 'Fira Code', 'Menlo', 'SFMono-Regular', monospace;
   line-height: 1;
+  color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
   transition: transform 120ms ease, border 120ms ease;
   background: transparent;
@@ -76,4 +80,5 @@
   font-size: 0.75rem;
   line-height: 1.4;
   color: rgba(255, 255, 255, 0.55);
+  margin-top: auto;
 }

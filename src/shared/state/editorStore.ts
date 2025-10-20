@@ -17,8 +17,11 @@ import type {
   Palette,
   PaletteSwatch,
 } from '@shared/types/editor'
+import { BASE_UNIT_PX } from '@shared/constants/canvas'
 
 const DEFAULT_GLYPH = '▒'
+const MIN_VIEWPORT_SCALE = 0.25
+const MAX_VIEWPORT_SCALE = 6
 
 const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boolean>>> = {
   classic: {
@@ -40,6 +43,14 @@ const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boo
     palette: true,
   },
 }
+
+const normalizeAngle = (angle: number): number => {
+  const normalized = angle % 360
+  return normalized < 0 ? normalized + 360 : normalized
+}
+
+const clampScale = (scale: number): number =>
+  Math.min(MAX_VIEWPORT_SCALE, Math.max(MIN_VIEWPORT_SCALE, scale))
 
 const generateId = (prefix: string): string => {
   const sanitized = prefix.replace(/\s+/g, '-').toLowerCase() || 'id'
@@ -279,6 +290,7 @@ const initialState: EditorState = {
     snapped: false,
     gridEnabled: false,
     crosshairEnabled: true,
+    rotation: 0,
   },
   selection: {
     glyphIds: [],
@@ -299,6 +311,10 @@ const initialState: EditorState = {
     showCrosshair: true,
     autoGroupSelection: true,
   },
+  viewport: {
+    offset: { x: 0, y: 0 },
+    scale: 1,
+  },
   activeGlyphChar: DEFAULT_GLYPH,
   activePaletteId: initialPalette?.id,
   activeSwatchId: initialPalette?.swatches[0]?.id,
@@ -316,6 +332,10 @@ export interface EditorStore extends EditorState {
   setActiveSwatch: (swatchId?: string) => void
   setActiveGlyph: (glyphChar?: string) => void
   setPreferences: (preferences: Partial<EditorPreferences>) => void
+  panViewport: (delta: Vec2) => void
+  zoomViewport: (scaleFactor: number, anchor?: Vec2) => void
+  setCursorRotation: (rotation: number) => void
+  nudgeCursorRotation: (deltaDegrees: number) => void
   toggleGrid: () => void
   toggleSnapping: () => void
   setActiveColor: (color: string) => void
@@ -448,6 +468,41 @@ export const useEditorStore = create<EditorStore>()(
         draft.preferences = { ...draft.preferences, ...preferences }
         draft.cursor.gridEnabled = draft.preferences.showGrid
         draft.cursor.crosshairEnabled = draft.preferences.showCrosshair
+      }),
+    panViewport: (delta) =>
+      set((draft) => {
+        draft.viewport.offset.x += delta.x
+        draft.viewport.offset.y += delta.y
+      }),
+    zoomViewport: (scaleFactor, anchor) =>
+      set((draft) => {
+        if (!Number.isFinite(scaleFactor) || scaleFactor === 0) {
+          return
+        }
+        const currentScale = draft.viewport.scale
+        const nextScale = clampScale(currentScale * scaleFactor)
+        if (nextScale === currentScale) {
+          return
+        }
+
+        if (anchor) {
+          const { offset } = draft.viewport
+          const unit = BASE_UNIT_PX
+          const contentX = (anchor.x - offset.x) / (unit * currentScale)
+          const contentY = (anchor.y - offset.y) / (unit * currentScale)
+          draft.viewport.offset.x = anchor.x - contentX * unit * nextScale
+          draft.viewport.offset.y = anchor.y - contentY * unit * nextScale
+        }
+
+        draft.viewport.scale = nextScale
+      }),
+    setCursorRotation: (rotation) =>
+      set((draft) => {
+        draft.cursor.rotation = normalizeAngle(rotation)
+      }),
+    nudgeCursorRotation: (deltaDegrees) =>
+      set((draft) => {
+        draft.cursor.rotation = normalizeAngle(draft.cursor.rotation + deltaDegrees)
       }),
     toggleGrid: () =>
       set((draft) => {
@@ -583,7 +638,7 @@ export const useEditorStore = create<EditorStore>()(
           transform: {
             translation: { x: 0, y: 0 },
             scale: { x: 1, y: 1 },
-            rotation: 0,
+            rotation: draft.cursor.rotation,
           },
           paletteId: palette.id,
           swatchId: swatch?.id,
@@ -789,6 +844,7 @@ export const useEditorStore = create<EditorStore>()(
         draft.cursor = { ...initialState.cursor }
         draft.preferences = { ...initialState.preferences }
         draft.layout = structuredClone(initialState.layout)
+        draft.viewport = structuredClone(initialState.viewport)
         syncActiveColor(draft)
       }),
   })),

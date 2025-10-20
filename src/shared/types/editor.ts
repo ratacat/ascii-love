@@ -109,6 +109,7 @@ export interface CursorState {
   snapped: boolean
   gridEnabled: boolean
   crosshairEnabled: boolean
+  rotation: number
 }
 
 export interface EditorPreferences {
@@ -117,12 +118,18 @@ export interface EditorPreferences {
   autoGroupSelection: boolean
 }
 
+export interface ViewportState {
+  offset: Vec2
+  scale: number
+}
+
 export interface EditorState {
   document: CanvasDocument
   cursor: CursorState
   selection: SelectionState
   layout: LayoutState
   preferences: EditorPreferences
+  viewport: ViewportState
   activeGlyphChar?: string
   activePaletteId?: string
   activeSwatchId?: string

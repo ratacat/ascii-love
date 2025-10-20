@@ -24,6 +24,7 @@ export function CanvasViewport() {
   const nudgeCursorRotation = useEditorStore((state) => state.nudgeCursorRotation)
 
   const unitSize = BASE_UNIT_PX * viewport.scale
+  const paddingUnits = 200
   const [hoveredPoint, setHoveredPoint] = useState<Vec2 | null>(null)
   const [marquee, setMarquee] = useState<{
     origin: Vec2
@@ -34,10 +35,10 @@ export function CanvasViewport() {
   const marqueeBaseSelectionRef = useRef<string[]>([])
 
   const stageDimensions = useMemo(() => {
-    const width = document.width * unitSize
-    const height = document.height * unitSize
+    const width = (document.width + paddingUnits * 2) * unitSize
+    const height = (document.height + paddingUnits * 2) * unitSize
     return { width, height }
-  }, [document.height, document.width, unitSize])
+  }, [document.height, document.width, paddingUnits, unitSize])
 
   const activeLayer = useMemo(
     () => document.layers.find((layer) => layer.id === activeLayerId),
@@ -80,22 +81,16 @@ export function CanvasViewport() {
       if (!rect) {
         return null
       }
-      const x = (event.clientX - rect.left) / unitSize
-      const y = (event.clientY - rect.top) / unitSize
+      const x = (event.clientX - rect.left) / unitSize - paddingUnits
+      const y = (event.clientY - rect.top) / unitSize - paddingUnits
 
       if (Number.isNaN(x) || Number.isNaN(y)) {
         return null
       }
 
-      const maxX = document.width > 0 ? document.width - 1e-6 : 0
-      const maxY = document.height > 0 ? document.height - 1e-6 : 0
-
-      return {
-        x: Math.min(Math.max(x, 0), maxX),
-        y: Math.min(Math.max(y, 0), maxY),
-      }
+      return { x, y }
     },
-    [document.height, document.width, unitSize],
+    [paddingUnits, unitSize],
   )
 
   const applySnapping = useCallback(
@@ -106,15 +101,13 @@ export function CanvasViewport() {
 
       const snappedX = Math.round(position.x)
       const snappedY = Math.round(position.y)
-      const maxX = document.width > 0 ? document.width - 1 : 0
-      const maxY = document.height > 0 ? document.height - 1 : 0
 
       return {
-        x: Math.min(Math.max(snappedX, 0), maxX),
-        y: Math.min(Math.max(snappedY, 0), maxY),
+        x: snappedX,
+        y: snappedY,
       }
     },
-    [cursor.snapped, document.height, document.width],
+    [cursor.snapped],
   )
 
   const handleStageInteraction = useCallback(
@@ -266,8 +259,6 @@ const handlePointerMove = useCallback(
     }
 
     const handleWheel = (event: WheelEvent) => {
-      const container = node.parentElement ?? node
-      const containerRect = container.getBoundingClientRect()
 
       if (event.shiftKey) {
         event.preventDefault()
@@ -315,6 +306,8 @@ const handlePointerMove = useCallback(
     cursor.mode,
     nudgeCursorRotation,
     panViewport,
+    paddingUnits,
+    pointerToDocumentPosition,
     unitSize,
     zoomViewport,
   ])
@@ -324,15 +317,15 @@ const handlePointerMove = useCallback(
       return null
     }
 
-    const left = Math.min(marquee.origin.x, marquee.current.x) * unitSize
-    const top = Math.min(marquee.origin.y, marquee.current.y) * unitSize
+    const left = (Math.min(marquee.origin.x, marquee.current.x) + paddingUnits) * unitSize
+    const top = (Math.min(marquee.origin.y, marquee.current.y) + paddingUnits) * unitSize
     return {
       left,
       top,
       width: Math.abs(marquee.origin.x - marquee.current.x) * unitSize,
       height: Math.abs(marquee.origin.y - marquee.current.y) * unitSize,
     }
-  }, [marquee, unitSize])
+  }, [marquee, paddingUnits, unitSize])
 
   const previewPoint = hoveredPoint && cursor.mode === 'place' ? applySnapping(hoveredPoint) : null
 
@@ -352,12 +345,18 @@ const handlePointerMove = useCallback(
     }
 
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
-    const maxX = Math.max(document.width - 1, 0)
-    const maxY = Math.max(document.height - 1, 0)
-    const clampedX = clamp(crosshairPoint.x, 0, maxX)
-    const clampedY = clamp(crosshairPoint.y, 0, maxY)
-    const left = Math.round(clampedX * unitSize)
-    const top = Math.round(clampedY * unitSize)
+    const clampedX = clamp(
+      crosshairPoint.x,
+      -paddingUnits,
+      document.width + paddingUnits - 1,
+    )
+    const clampedY = clamp(
+      crosshairPoint.y,
+      -paddingUnits,
+      document.height + paddingUnits - 1,
+    )
+    const left = Math.round((clampedX + paddingUnits) * unitSize)
+    const top = Math.round((clampedY + paddingUnits) * unitSize)
 
     return {
       top,
@@ -365,20 +364,34 @@ const handlePointerMove = useCallback(
       left,
       right: left + unitSize,
     }
-  }, [crosshairPoint, cursor.crosshairEnabled, document.height, document.width, unitSize])
+  }, [
+    crosshairPoint,
+    cursor.crosshairEnabled,
+    document.height,
+    document.width,
+    paddingUnits,
+    unitSize,
+  ])
 
   const canvasStyle = useMemo(
     () =>
       ({
         width: stageDimensions.width,
         height: stageDimensions.height,
-        transform: `translate3d(${viewport.offset.x}px, ${viewport.offset.y}px, 0)`,
+        transform: `translate3d(${viewport.offset.x - paddingUnits * unitSize}px, ${viewport.offset.y - paddingUnits * unitSize}px, 0)`,
         transformOrigin: '0 0',
         willChange: 'transform',
         '--canvas-unit-size': `${unitSize}px`,
         '--glyph-font-size': `${unitSize * 0.85}px`,
       }) as CSSProperties & Record<string, string>,
-    [stageDimensions.height, stageDimensions.width, unitSize, viewport.offset.x, viewport.offset.y],
+    [
+      stageDimensions.height,
+      stageDimensions.width,
+      paddingUnits,
+      unitSize,
+      viewport.offset.x,
+      viewport.offset.y,
+    ],
   )
 
   const renderGlyph = useCallback(
@@ -390,8 +403,8 @@ const handlePointerMove = useCallback(
       const foreground = glyph.foreground ?? swatch?.foreground ?? 'rgba(255, 255, 255, 0.9)'
 
       const style: CSSProperties = {
-        left: Math.round(glyph.position.x * unitSize),
-        top: Math.round(glyph.position.y * unitSize),
+        left: Math.round((glyph.position.x + paddingUnits) * unitSize),
+        top: Math.round((glyph.position.y + paddingUnits) * unitSize),
         zIndex: layerZ + 1,
         color: foreground,
         width: unitSize,
@@ -446,7 +459,7 @@ const handlePointerMove = useCallback(
         </button>
       )
     },
-    [handleGlyphInteraction, paletteMap, selection.glyphIds, unitSize],
+    [handleGlyphInteraction, paddingUnits, paletteMap, selection.glyphIds, unitSize],
   )
   const activePalette = activePaletteId ? paletteMap.get(activePaletteId) : undefined
   const activeSwatch = activeSwatchId ? activePalette?.get(activeSwatchId) : undefined
@@ -546,8 +559,8 @@ const handlePointerMove = useCallback(
             <div
               className="canvas-viewport__cursor-preview"
               style={{
-                left: Math.round(previewPoint.x * unitSize),
-                top: Math.round(previewPoint.y * unitSize),
+                left: Math.round((previewPoint.x + paddingUnits) * unitSize),
+                top: Math.round((previewPoint.y + paddingUnits) * unitSize),
                 color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
                 transform: `rotate(${cursor.rotation}deg)`,
                 transformOrigin: '50% 50%',

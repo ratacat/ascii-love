@@ -619,6 +619,39 @@ export const useEditorStore = create<EditorStore>()(
           return
         }
 
+        const placement = { ...position }
+        let shiftX = 0
+        let shiftY = 0
+
+        if (placement.x < 0) {
+          shiftX = Math.floor(placement.x)
+        }
+        if (placement.y < 0) {
+          shiftY = Math.floor(placement.y)
+        }
+
+        if (shiftX !== 0 || shiftY !== 0) {
+          draft.document.layers.forEach((layer) => {
+            layer.glyphs.forEach((glyph) => {
+              glyph.position.x -= shiftX
+              glyph.position.y -= shiftY
+            })
+          })
+
+          placement.x -= shiftX
+          placement.y -= shiftY
+
+          draft.viewport.offset.x += shiftX * BASE_UNIT_PX * draft.viewport.scale
+          draft.viewport.offset.y += shiftY * BASE_UNIT_PX * draft.viewport.scale
+
+          if (shiftX !== 0) {
+            draft.document.width += -shiftX
+          }
+          if (shiftY !== 0) {
+            draft.document.height += -shiftY
+          }
+        }
+
         const paletteId = options?.paletteId ?? draft.activePaletteId ?? draft.document.palettes[0]?.id
         const palette = paletteId ? getPaletteById(draft.document, paletteId) : undefined
         const swatchId = options?.swatchId ?? draft.activeSwatchId
@@ -634,7 +667,7 @@ export const useEditorStore = create<EditorStore>()(
         const glyph: GlyphInstance = {
           id: generateId('glyph'),
           char,
-          position,
+          position: placement,
           transform: {
             translation: { x: 0, y: 0 },
             scale: { x: 1, y: 1 },
@@ -649,6 +682,20 @@ export const useEditorStore = create<EditorStore>()(
         }
 
         draft.document.layers[targetLayerIndex].glyphs.push(glyph)
+
+        const requiredWidth = Math.max(
+          draft.document.width,
+          Math.ceil(placement.x + 1),
+        )
+        const requiredHeight = Math.max(
+          draft.document.height,
+          Math.ceil(placement.y + 1),
+        )
+
+        draft.document.width = requiredWidth
+        draft.document.height = requiredHeight
+
+        recalcSelectionMeta(draft)
       }),
     updateGlyphPosition: (glyphId, position) =>
       set((draft) => {

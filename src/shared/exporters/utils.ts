@@ -43,6 +43,65 @@ interface SelectionExtraction {
   }
 }
 
+const computeDocumentBounds = (layers: CanvasLayer[]):
+  | { minX: number; minY: number; maxX: number; maxY: number }
+  | null => {
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let hasGlyphs = false
+
+  layers.forEach((layer) => {
+    layer.glyphs.forEach((glyph) => {
+      hasGlyphs = true
+      minX = Math.min(minX, glyph.position.x)
+      minY = Math.min(minY, glyph.position.y)
+      maxX = Math.max(maxX, glyph.position.x)
+      maxY = Math.max(maxY, glyph.position.y)
+    })
+  })
+
+  if (!hasGlyphs || !Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+    return null
+  }
+
+  return { minX, minY, maxX, maxY }
+}
+
+const trimDocumentToBounds = (document: CanvasDocument, padding: number): CanvasDocument => {
+  const bounds = computeDocumentBounds(document.layers)
+  if (!bounds) {
+    return {
+      ...document,
+      width: Math.max(1, document.width),
+      height: Math.max(1, document.height),
+    }
+  }
+
+  const width = Math.max(1, bounds.maxX - bounds.minX + 1 + padding * 2)
+  const height = Math.max(1, bounds.maxY - bounds.minY + 1 + padding * 2)
+
+  const layers = document.layers.map((layer, index) => ({
+    ...deepClone(layer),
+    glyphs: layer.glyphs.map((glyph) => ({
+      ...deepClone(glyph),
+      position: {
+        x: glyph.position.x - bounds.minX + padding,
+        y: glyph.position.y - bounds.minY + padding,
+      },
+    })),
+    zIndex: index,
+  }))
+
+  return {
+    ...document,
+    width,
+    height,
+    layers,
+  }
+}
+
 const extractSelection = (document: CanvasDocument, selection: SelectionState): SelectionExtraction | null => {
   const glyphIdSet = new Set(selection.glyphIds)
   if (!glyphIdSet.size) {
@@ -116,7 +175,7 @@ export const buildExportDocument = ({
   }
 
   if (scope === 'document' || !selection.glyphIds.length) {
-    return base
+    return trimDocumentToBounds(base, padding)
   }
 
   const selectionData = extractSelection(document, selection)

@@ -90,11 +90,12 @@ export interface SelectionState {
   }
 }
 
-export type PanelId = 'layers' | 'glyphLibrary' | 'inspector' | 'palette'
+export type PanelId = 'layers' | 'glyphLibrary' | 'inspector' | 'palette' | 'hotkeys'
 
 export interface PanelState {
   id: PanelId
   visible: boolean
+  collapsed: boolean
 }
 
 export type LayoutPreset = 'classic' | 'reference' | 'animation'
@@ -110,6 +111,7 @@ export interface CursorState {
   gridEnabled: boolean
   crosshairEnabled: boolean
   rotation: number
+  scale: number
 }
 
 export interface EditorPreferences {

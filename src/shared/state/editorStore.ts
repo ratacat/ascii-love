@@ -22,6 +22,9 @@ import { BASE_UNIT_PX } from '@shared/constants/canvas'
 const DEFAULT_GLYPH = '▒'
 const MIN_VIEWPORT_SCALE = 0.25
 const MAX_VIEWPORT_SCALE = 6
+const CURSOR_SCALE_MIN = 0.25
+const CURSOR_SCALE_MAX = 3
+const CURSOR_SCALE_STEP = 0.25
 
 const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boolean>>> = {
   classic: {
@@ -29,18 +32,21 @@ const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boo
     glyphLibrary: true,
     inspector: true,
     palette: true,
+    hotkeys: true,
   },
   reference: {
     layers: true,
     glyphLibrary: true,
     inspector: false,
     palette: true,
+    hotkeys: true,
   },
   animation: {
     layers: true,
     glyphLibrary: false,
     inspector: true,
     palette: true,
+    hotkeys: true,
   },
 }
 
@@ -51,6 +57,17 @@ const normalizeAngle = (angle: number): number => {
 
 const clampScale = (scale: number): number =>
   Math.min(MAX_VIEWPORT_SCALE, Math.max(MIN_VIEWPORT_SCALE, scale))
+
+const clampCursorScale = (scale: number): number =>
+  Math.min(CURSOR_SCALE_MAX, Math.max(CURSOR_SCALE_MIN, scale))
+
+const snapCursorScale = (scale: number): number =>
+  Math.round(scale / CURSOR_SCALE_STEP) * CURSOR_SCALE_STEP
+
+const normalizeCursorScale = (scale: number): number => {
+  const snapped = snapCursorScale(clampCursorScale(scale))
+  return Math.round(snapped * 100) / 100
+}
 
 const generateId = (prefix: string): string => {
   const sanitized = prefix.replace(/\s+/g, '-').toLowerCase() || 'id'
@@ -277,6 +294,7 @@ const applyLayoutPresetVisibility = (layout: LayoutState, preset: LayoutPreset) 
     const panelVisibility = visibility[panelId]
     layout.panels[panelId].visible =
       panelVisibility ?? LAYOUT_PRESET_VISIBILITY.classic[panelId] ?? layout.panels[panelId].visible
+    layout.panels[panelId].collapsed = false
   }
 }
 
@@ -291,6 +309,7 @@ const initialState: EditorState = {
     gridEnabled: false,
     crosshairEnabled: true,
     rotation: 0,
+    scale: 1,
   },
   selection: {
     glyphIds: [],
@@ -300,10 +319,11 @@ const initialState: EditorState = {
   layout: {
     activePreset: 'classic',
     panels: {
-      layers: { id: 'layers', visible: true },
-      glyphLibrary: { id: 'glyphLibrary', visible: true },
-      inspector: { id: 'inspector', visible: true },
-      palette: { id: 'palette', visible: true },
+      layers: { id: 'layers', visible: true, collapsed: false },
+      glyphLibrary: { id: 'glyphLibrary', visible: true, collapsed: false },
+      inspector: { id: 'inspector', visible: true, collapsed: false },
+      palette: { id: 'palette', visible: true, collapsed: false },
+      hotkeys: { id: 'hotkeys', visible: true, collapsed: false },
     },
   },
   preferences: {
@@ -325,6 +345,8 @@ const initialState: EditorState = {
 export interface EditorStore extends EditorState {
   setCursorMode: (mode: CursorMode) => void
   togglePanelVisibility: (panelId: PanelId) => void
+  togglePanelCollapsed: (panelId: PanelId) => void
+  setPanelCollapsed: (panelId: PanelId, collapsed: boolean) => void
   setLayoutPreset: (preset: LayoutPreset) => void
   loadLayoutFromPersistence: (layout: LayoutState) => void
   setActiveLayer: (layerId: string) => void
@@ -336,6 +358,8 @@ export interface EditorStore extends EditorState {
   zoomViewport: (scaleFactor: number, anchor?: Vec2) => void
   setCursorRotation: (rotation: number) => void
   nudgeCursorRotation: (deltaDegrees: number) => void
+  setCursorScale: (scale: number) => void
+  nudgeCursorScale: (steps: number) => void
   toggleGrid: () => void
   toggleSnapping: () => void
   setActiveColor: (color: string) => void
@@ -376,6 +400,23 @@ export const useEditorStore = create<EditorStore>()(
         const panel = draft.layout.panels[panelId]
         if (panel) {
           panel.visible = !panel.visible
+          if (panel.visible && panel.collapsed) {
+            panel.collapsed = false
+          }
+        }
+      }),
+    togglePanelCollapsed: (panelId) =>
+      set((draft) => {
+        const panel = draft.layout.panels[panelId]
+        if (panel) {
+          panel.collapsed = !panel.collapsed
+        }
+      }),
+    setPanelCollapsed: (panelId, collapsed) =>
+      set((draft) => {
+        const panel = draft.layout.panels[panelId]
+        if (panel) {
+          panel.collapsed = collapsed
         }
       }),
     setLayoutPreset: (preset) =>
@@ -390,9 +431,13 @@ export const useEditorStore = create<EditorStore>()(
           const persisted = layout.panels[panelId]
           if (persisted) {
             draft.layout.panels[panelId].visible = persisted.visible
+            draft.layout.panels[panelId].collapsed = persisted.collapsed ?? false
           }
         })
         draft.layout.panels.palette.visible = true
+        draft.layout.panels.hotkeys.visible = true
+        draft.layout.panels.palette.collapsed = false
+        draft.layout.panels.hotkeys.collapsed = false
       }),
     setActiveLayer: (layerId) =>
       set((draft) => {
@@ -503,6 +548,14 @@ export const useEditorStore = create<EditorStore>()(
     nudgeCursorRotation: (deltaDegrees) =>
       set((draft) => {
         draft.cursor.rotation = normalizeAngle(draft.cursor.rotation + deltaDegrees)
+      }),
+    setCursorScale: (scale) =>
+      set((draft) => {
+        draft.cursor.scale = normalizeCursorScale(scale)
+      }),
+    nudgeCursorScale: (steps) =>
+      set((draft) => {
+        draft.cursor.scale = normalizeCursorScale(draft.cursor.scale + steps * CURSOR_SCALE_STEP)
       }),
     toggleGrid: () =>
       set((draft) => {
@@ -664,13 +717,15 @@ export const useEditorStore = create<EditorStore>()(
         const swatch = swatchId ? palette.swatches.find((item) => item.id === swatchId) : undefined
         const color = normalizeColor(draft.activeColor) ?? normalizeColor(swatch?.foreground) ?? '#FFFFFF'
 
+        const cursorScale = draft.cursor.scale ?? 1
+
         const glyph: GlyphInstance = {
           id: generateId('glyph'),
           char,
           position: placement,
           transform: {
             translation: { x: 0, y: 0 },
-            scale: { x: 1, y: 1 },
+            scale: { x: cursorScale, y: cursorScale },
             rotation: draft.cursor.rotation,
           },
           paletteId: palette.id,

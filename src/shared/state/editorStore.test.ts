@@ -24,6 +24,22 @@ describe('editorStore', () => {
     expect(useEditorStore.getState().layout.panels.layers.visible).toBe(false)
   })
 
+  it('collapses and expands panels independently of visibility', () => {
+    const store = useEditorStore.getState()
+    expect(store.layout.panels.palette.collapsed).toBe(false)
+
+    store.togglePanelCollapsed('palette')
+    expect(useEditorStore.getState().layout.panels.palette.collapsed).toBe(true)
+
+    store.togglePanelVisibility('palette')
+    expect(useEditorStore.getState().layout.panels.palette.visible).toBe(false)
+
+    store.togglePanelVisibility('palette')
+    const nextState = useEditorStore.getState()
+    expect(nextState.layout.panels.palette.visible).toBe(true)
+    expect(nextState.layout.panels.palette.collapsed).toBe(false)
+  })
+
   it('resets document state when provided a new document', () => {
     const customDocument = {
       id: 'doc-test',
@@ -68,5 +84,30 @@ describe('editorStore', () => {
     expect(nextState.activeLayerId).toBe('layer-1')
     expect(nextState.activePaletteId).toBe('palette-1')
     expect(nextState.selection.layerIds).toEqual(['layer-1'])
+  })
+
+  it('nudges cursor scale within configured bounds', () => {
+    const store = useEditorStore.getState()
+    expect(store.cursor.scale).toBe(1)
+
+    store.setCursorScale(2.25)
+    expect(useEditorStore.getState().cursor.scale).toBe(2.25)
+
+    store.setCursorScale(42)
+    expect(useEditorStore.getState().cursor.scale).toBe(3)
+
+    store.nudgeCursorScale(-20)
+    expect(useEditorStore.getState().cursor.scale).toBe(0.25)
+  })
+
+  it('applies cursor scale to new glyph placements', () => {
+    const store = useEditorStore.getState()
+    store.setCursorMode('place')
+    store.setCursorScale(1.5)
+    store.placeGlyph({ x: 0, y: 0 })
+
+    const nextState = useEditorStore.getState()
+    const glyph = nextState.document.layers[0]?.glyphs.at(-1)
+    expect(glyph?.transform.scale).toEqual({ x: 1.5, y: 1.5 })
   })
 })

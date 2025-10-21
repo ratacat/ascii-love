@@ -25,6 +25,7 @@ export function CanvasViewport() {
 
   const unitSize = BASE_UNIT_PX * viewport.scale
   const paddingUnits = 200
+  const paddingPx = paddingUnits * unitSize
   const [hoveredPoint, setHoveredPoint] = useState<Vec2 | null>(null)
   const [marquee, setMarquee] = useState<{
     origin: Vec2
@@ -328,6 +329,19 @@ const handlePointerMove = useCallback(
   }, [marquee, paddingUnits, unitSize])
 
   const previewPoint = hoveredPoint && cursor.mode === 'place' ? applySnapping(hoveredPoint) : null
+  const cursorScaleLabel = useMemo(() => `×${cursor.scale.toFixed(2).replace(/\.?0+$/, '')}`, [
+    cursor.scale,
+  ])
+  const cursorPreviewTransform = useMemo(() => {
+    const transforms: string[] = []
+    if (cursor.rotation) {
+      transforms.push(`rotate(${cursor.rotation}deg)`)
+    }
+    if (cursor.scale !== 1) {
+      transforms.push(`scale(${cursor.scale})`)
+    }
+    return transforms.join(' ') || undefined
+  }, [cursor.rotation, cursor.scale])
 
   const crosshairPoint = useMemo(() => {
     if (!hoveredPoint) {
@@ -373,12 +387,22 @@ const handlePointerMove = useCallback(
     unitSize,
   ])
 
+  const stageOffsetStyle = useMemo(
+    () =>
+      ({
+        transform: `translate3d(${-paddingPx}px, ${-paddingPx}px, 0)`,
+        transformOrigin: '0 0',
+        willChange: 'transform',
+      }) as CSSProperties,
+    [paddingPx],
+  )
+
   const canvasStyle = useMemo(
     () =>
       ({
         width: stageDimensions.width,
         height: stageDimensions.height,
-        transform: `translate3d(${viewport.offset.x - paddingUnits * unitSize}px, ${viewport.offset.y - paddingUnits * unitSize}px, 0)`,
+        transform: `translate3d(${viewport.offset.x}px, ${viewport.offset.y}px, 0)`,
         transformOrigin: '0 0',
         willChange: 'transform',
         '--canvas-unit-size': `${unitSize}px`,
@@ -387,7 +411,6 @@ const handlePointerMove = useCallback(
     [
       stageDimensions.height,
       stageDimensions.width,
-      paddingUnits,
       unitSize,
       viewport.offset.x,
       viewport.offset.y,
@@ -482,96 +505,102 @@ const handlePointerMove = useCallback(
               {hoveredPoint ? `${hoveredPoint.x.toFixed(2)}, ${hoveredPoint.y.toFixed(2)}` : '—'}
             </strong>
           </span>
+          <span className="canvas-viewport__scale">
+            Placement Scale:
+            <strong>{cursorScaleLabel}</strong>
+          </span>
         </div>
         <ExportMenu />
       </header>
       <div className="canvas-viewport__stage">
-        <div
-          ref={stageRef}
-          className={[
-            'canvas-viewport__canvas',
-            `canvas-viewport__canvas--${cursor.mode}`,
-            previewPoint && activeGlyphChar && 'canvas-viewport__canvas--cursorless',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-          style={canvasStyle}
-          onClick={handleStageInteraction}
-          onMouseDown={handleStageMouseDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={(event) => finalizeMarquee(event)}
-          onMouseLeave={() => {
-            setHoveredPoint(null)
-          }}
-        >
+        <div className="canvas-viewport__canvas-wrapper" style={stageOffsetStyle}>
           <div
+            ref={stageRef}
             className={[
-              'canvas-viewport__surface',
-              cursor.gridEnabled && 'canvas-viewport__surface--grid',
+              'canvas-viewport__canvas',
+              `canvas-viewport__canvas--${cursor.mode}`,
+              previewPoint && activeGlyphChar && 'canvas-viewport__canvas--cursorless',
             ]
               .filter(Boolean)
               .join(' ')}
-            role="presentation"
-          />
-          {marqueeRect ? (
+            style={canvasStyle}
+            onClick={handleStageInteraction}
+            onMouseDown={handleStageMouseDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={(event) => finalizeMarquee(event)}
+            onMouseLeave={() => {
+              setHoveredPoint(null)
+            }}
+          >
             <div
-              className="canvas-viewport__marquee"
-              style={{
-                left: marqueeRect.left,
-                top: marqueeRect.top,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-              }}
+              className={[
+                'canvas-viewport__surface',
+                cursor.gridEnabled && 'canvas-viewport__surface--grid',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              role="presentation"
             />
-          ) : null}
-          {crosshairBounds ? (
-            <div className="canvas-viewport__crosshair" aria-hidden>
+            {marqueeRect ? (
               <div
-                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
-                style={{ top: crosshairBounds.top }}
-              />
-              <div
-                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
+                className="canvas-viewport__marquee"
                 style={{
-                  top: Math.max(
-                    0,
-                    Math.min(stageDimensions.height - 1, crosshairBounds.bottom - 1),
-                  ),
+                  left: marqueeRect.left,
+                  top: marqueeRect.top,
+                  width: marqueeRect.width,
+                  height: marqueeRect.height,
                 }}
               />
+            ) : null}
+            {crosshairBounds ? (
+              <div className="canvas-viewport__crosshair" aria-hidden>
+                <div
+                  className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
+                  style={{ top: crosshairBounds.top }}
+                />
+                <div
+                  className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--horizontal"
+                  style={{
+                    top: Math.max(
+                      0,
+                      Math.min(stageDimensions.height - 1, crosshairBounds.bottom - 1),
+                    ),
+                  }}
+                />
+                <div
+                  className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
+                  style={{ left: crosshairBounds.left }}
+                />
+                <div
+                  className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
+                  style={{
+                    left: Math.max(
+                      0,
+                      Math.min(stageDimensions.width - 1, crosshairBounds.right - 1),
+                    ),
+                  }}
+                />
+              </div>
+            ) : null}
+            {glyphEntries.map(renderGlyph)}
+            {previewPoint && activeGlyphChar ? (
               <div
-                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
-                style={{ left: crosshairBounds.left }}
-              />
-              <div
-                className="canvas-viewport__crosshair-line canvas-viewport__crosshair-line--vertical"
+                className="canvas-viewport__cursor-preview"
                 style={{
-                  left: Math.max(
-                    0,
-                    Math.min(stageDimensions.width - 1, crosshairBounds.right - 1),
-                  ),
+                  left: Math.round((previewPoint.x + paddingUnits) * unitSize),
+                  top: Math.round((previewPoint.y + paddingUnits) * unitSize),
+                  color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
+                  transform: cursorPreviewTransform,
+                  transformOrigin: '50% 50%',
+                  width: unitSize,
+                  height: unitSize,
+                  fontSize: `${unitSize * 0.85}px`,
                 }}
-              />
-            </div>
-          ) : null}
-          {glyphEntries.map(renderGlyph)}
-          {previewPoint && activeGlyphChar ? (
-            <div
-              className="canvas-viewport__cursor-preview"
-              style={{
-                left: Math.round((previewPoint.x + paddingUnits) * unitSize),
-                top: Math.round((previewPoint.y + paddingUnits) * unitSize),
-                color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
-                transform: `rotate(${cursor.rotation}deg)`,
-                transformOrigin: '50% 50%',
-                width: unitSize,
-                height: unitSize,
-                fontSize: `${unitSize * 0.85}px`,
-              }}
-            >
-              {activeGlyphChar}
-            </div>
-          ) : null}
+              >
+                {activeGlyphChar}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

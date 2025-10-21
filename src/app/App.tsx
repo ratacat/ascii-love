@@ -5,6 +5,7 @@ import { GlyphLibraryPanel } from '@features/glyphs/components/GlyphLibraryPanel
 import { InspectorPanel } from '@features/inspector/components/InspectorPanel'
 import { LayersPanel } from '@features/layers/components/LayersPanel'
 import { PalettePanel } from '@features/palette/components/PalettePanel'
+import { HotkeysPanel } from '@features/hotkeys/components/HotkeysPanel'
 import { StatusBar } from '@features/status-bar/components/StatusBar'
 import { Toolbar } from '@features/toolbar/components/Toolbar'
 import { PanelChrome } from '@shared/ui/PanelChrome'
@@ -38,6 +39,9 @@ export function App() {
           </PanelChrome>
           <PanelChrome id="palette" title="Palette Manager">
             <PalettePanel />
+          </PanelChrome>
+          <PanelChrome id="hotkeys" title="Hotkeys">
+            <HotkeysPanel />
           </PanelChrome>
         </aside>
       </div>

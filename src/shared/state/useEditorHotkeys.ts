@@ -16,7 +16,8 @@ export function useEditorHotkeys() {
       }
 
       const state = useEditorStore.getState()
-      const key = event.key.toLowerCase()
+      const rawKey = event.key
+      const key = rawKey.toLowerCase()
 
       if ((event.code === 'Space' && event.shiftKey) || key === 'g') {
         event.preventDefault()
@@ -61,6 +62,20 @@ export function useEditorHotkeys() {
           state.nudgeCursorRotation(45)
           return
         }
+      }
+
+      const isIncreaseKey =
+        rawKey === '+' || rawKey === '=' || rawKey === 'Add' || event.code === 'NumpadAdd'
+      const isDecreaseKey =
+        rawKey === '-' || rawKey === '_' || rawKey === 'Subtract' || event.code === 'NumpadSubtract'
+
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && (isIncreaseKey || isDecreaseKey)) {
+        if (state.cursor.mode === 'place') {
+          event.preventDefault()
+          const step = isIncreaseKey ? 1 : -1
+          state.nudgeCursorScale(step)
+        }
+        return
       }
 
       for (const tool of TOOLBAR_TOOLS) {

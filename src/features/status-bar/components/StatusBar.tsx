@@ -3,6 +3,7 @@ import './StatusBar.css'
 import { useEditorStore } from '@shared/state/editorStore'
 export function StatusBar() {
   const cursorMode = useEditorStore((state) => state.cursor.mode)
+  const cursorScale = useEditorStore((state) => state.cursor.scale)
   const selectionCount = useEditorStore((state) => state.selection.glyphIds.length)
   const activeGlyphChar = useEditorStore((state) => state.activeGlyphChar)
   const activePaletteName = useEditorStore((state) => {
@@ -14,12 +15,17 @@ export function StatusBar() {
     const swatch = palette?.swatches.find((item) => item.id === state.activeSwatchId)
     return swatch?.name ?? 'Primary'
   })
+  const cursorScaleLabel = `×${cursorScale.toFixed(2).replace(/\.?0+$/, '')}`
 
   return (
     <footer className="status-bar">
       <div className="status-bar__section">
         <span className="status-bar__label">Mode</span>
         <span className="status-bar__value">{cursorMode}</span>
+      </div>
+      <div className="status-bar__section">
+        <span className="status-bar__label">Placement Scale</span>
+        <span className="status-bar__value">{cursorScaleLabel}</span>
       </div>
       <div className="status-bar__section">
         <span className="status-bar__label">Selection</span>

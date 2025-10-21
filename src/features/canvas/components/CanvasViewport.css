@@ -54,6 +54,12 @@
   touch-action: none;
 }
 
+.canvas-viewport__canvas-wrapper {
+  position: relative;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
 .canvas-viewport__surface {
   position: absolute;
   inset: 0;

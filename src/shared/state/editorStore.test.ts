@@ -94,7 +94,7 @@ describe('editorStore', () => {
     expect(useEditorStore.getState().cursor.scale).toBe(2.25)
 
     store.setCursorScale(42)
-    expect(useEditorStore.getState().cursor.scale).toBe(3)
+    expect(useEditorStore.getState().cursor.scale).toBe(5)
 
     store.nudgeCursorScale(-20)
     expect(useEditorStore.getState().cursor.scale).toBe(0.25)

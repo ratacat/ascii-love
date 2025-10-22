@@ -277,8 +277,8 @@ const handlePointerMove = useCallback(
         return
       }
       const anchorBase = {
-        x: docAnchor.x * unitSize,
-        y: docAnchor.y * unitSize,
+        x: docAnchor.x * unitSize + viewport.offset.x,
+        y: docAnchor.y * unitSize + viewport.offset.y,
       }
 
       if (event.metaKey) {

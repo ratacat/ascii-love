@@ -124,6 +124,7 @@ describe('layout persistence serialization', () => {
         glyphLibrary: { id: 'glyphLibrary', visible: true },
         inspector: { id: 'inspector', visible: false },
         palette: { id: 'palette', visible: true },
+        hotkeys: { id: 'hotkeys', visible: true },
       },
     } as LayoutState
 
@@ -133,11 +134,52 @@ describe('layout persistence serialization', () => {
       autoGroupSelection: false,
     }
 
-    const toml = serializeEditorStateToToml({ layout, preferences })
-    const parsed = parseEditorStateFromToml(toml)
+    const palettes: Palette[] = [
+      {
+        id: 'palette-123',
+        name: 'Persisted',
+        swatches: [
+          { id: 'swatch-1', name: 'Primary', foreground: '#abcdef', background: '#000000' },
+          { id: 'swatch-2', name: 'Accent', foreground: '#123456' },
+        ],
+        locked: false,
+        mutable: true,
+      },
+    ]
+
+    const serialized = serializeEditorStateToToml({ layout, preferences, palettes })
+    const parsed = parseEditorStateFromToml(serialized)
     expect(parsed?.layout.activePreset).toBe('reference')
     expect(parsed?.layout.panels.layers.visible).toBe(false)
+    expect(parsed?.layout.panels.hotkeys.visible).toBe(true)
     expect(parsed?.preferences.showGrid).toBe(true)
     expect(parsed?.preferences.autoGroupSelection).toBe(false)
+    expect(parsed?.palettes?.[0].id).toBe('palette-123')
+    expect(parsed?.palettes?.[0].swatches).toHaveLength(2)
+    expect(parsed?.palettes?.[0].swatches[0].foreground).toBe('#abcdef')
+  })
+
+  it('parses legacy TOML format without palette data', () => {
+    const legacy = [
+      '# ASCII Asset Studio layout + preference snapshot',
+      'activePreset = "reference"',
+      '',
+      '[panels]',
+      'layers = false',
+      'glyphLibrary = true',
+      'inspector = false',
+      'palette = true',
+      '',
+      '[preferences]',
+      'showGrid = true',
+      'showCrosshair = false',
+      'autoGroupSelection = false',
+      '',
+    ].join('\n')
+
+    const parsed = parseEditorStateFromToml(legacy)
+    expect(parsed?.layout.activePreset).toBe('reference')
+    expect(parsed?.preferences.showGrid).toBe(true)
+    expect(parsed?.palettes).toBeUndefined()
   })
 })

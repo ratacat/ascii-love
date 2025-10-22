@@ -23,7 +23,7 @@ const DEFAULT_GLYPH = '▒'
 const MIN_VIEWPORT_SCALE = 0.25
 const MAX_VIEWPORT_SCALE = 6
 const CURSOR_SCALE_MIN = 0.25
-const CURSOR_SCALE_MAX = 3
+const CURSOR_SCALE_MAX = 5
 const CURSOR_SCALE_STEP = 0.25
 
 const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boolean>>> = {
@@ -349,6 +349,7 @@ export interface EditorStore extends EditorState {
   setPanelCollapsed: (panelId: PanelId, collapsed: boolean) => void
   setLayoutPreset: (preset: LayoutPreset) => void
   loadLayoutFromPersistence: (layout: LayoutState) => void
+  loadPalettesFromPersistence: (palettes: Palette[]) => void
   setActiveLayer: (layerId: string) => void
   setActivePalette: (paletteId: string) => void
   setActiveSwatch: (swatchId?: string) => void
@@ -439,6 +440,36 @@ export const useEditorStore = create<EditorStore>()(
         draft.layout.panels.hotkeys.visible = true
         draft.layout.panels.palette.collapsed = false
         draft.layout.panels.hotkeys.collapsed = false
+      }),
+    loadPalettesFromPersistence: (palettes) =>
+      set((draft) => {
+        if (!Array.isArray(palettes) || !palettes.length) {
+          return
+        }
+
+        draft.document.palettes = palettes.map((palette) => ({
+          ...palette,
+          swatches: palette.swatches.map((swatch) => ({ ...swatch })),
+        }))
+
+        const hasActivePalette = draft.activePaletteId
+          ? draft.document.palettes.some((palette) => palette.id === draft.activePaletteId)
+          : false
+
+        if (!hasActivePalette) {
+          draft.activePaletteId = draft.document.palettes[0]?.id
+        }
+
+        const activePalette = getPaletteById(draft.document, draft.activePaletteId)
+        const hasActiveSwatch =
+          draft.activeSwatchId &&
+          activePalette?.swatches.some((swatch) => swatch.id === draft.activeSwatchId)
+
+        if (!hasActiveSwatch) {
+          draft.activeSwatchId = activePalette?.swatches[0]?.id
+        }
+
+        syncActiveColor(draft)
       }),
     setActiveLayer: (layerId) =>
       set((draft) => {

@@ -110,4 +110,41 @@ describe('editorStore', () => {
     const glyph = nextState.document.layers[0]?.glyphs.at(-1)
     expect(glyph?.transform.scale).toEqual({ x: 1.5, y: 1.5 })
   })
+
+  it('nudges selected glyphs by pixel delta', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    expect(glyph).toBeTruthy()
+    if (!glyph) {
+      return
+    }
+
+    store.selectGlyphs([glyph.id])
+    store.nudgeSelectionByPixels({ x: 2, y: 0 })
+
+    const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(moved?.transform.translation.x ?? 0).toBeCloseTo(2 / 24)
+  })
+
+  it('nudges group selections when only a group is selected', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 1, y: 1 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    store.createGroupFromSelection({ name: 'Test Group' })
+    const groupId = useEditorStore.getState().selection.groupIds[0]
+    expect(groupId).toBeDefined()
+
+    store.clearSelection()
+    store.setSelection({ groupIds: [groupId], glyphIds: [] })
+    store.nudgeSelectionByPixels({ x: 0, y: 20 })
+
+    const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(moved?.transform.translation.y ?? 0).toBeCloseTo(20 / 24)
+  })
 })

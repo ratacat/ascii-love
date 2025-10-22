@@ -101,4 +101,36 @@ describe('useEditorHotkeys', () => {
 
     glyphButton.remove()
   })
+
+  it('nudges selected glyphs with arrow keys', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    fireEvent.keyDown(window, { key: 'ArrowRight', code: 'ArrowRight' })
+
+    const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(moved?.transform.translation.x ?? 0).toBeCloseTo(2 / 24)
+  })
+
+  it('applies shift-modified arrow keys for larger nudges', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    fireEvent.keyDown(window, { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true })
+
+    const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(moved?.transform.translation.y ?? 0).toBeCloseTo(20 / 24)
+  })
 })

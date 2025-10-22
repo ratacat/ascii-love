@@ -358,6 +358,7 @@ export interface EditorStore extends EditorState {
   zoomViewport: (scaleFactor: number, anchor?: Vec2) => void
   setCursorRotation: (rotation: number) => void
   nudgeCursorRotation: (deltaDegrees: number) => void
+  nudgeSelectionByPixels: (delta: Vec2) => void
   setCursorScale: (scale: number) => void
   nudgeCursorScale: (steps: number) => void
   toggleGrid: () => void
@@ -548,6 +549,107 @@ export const useEditorStore = create<EditorStore>()(
     nudgeCursorRotation: (deltaDegrees) =>
       set((draft) => {
         draft.cursor.rotation = normalizeAngle(draft.cursor.rotation + deltaDegrees)
+      }),
+    nudgeSelectionByPixels: (delta) =>
+      set((draft) => {
+        if (delta.x === 0 && delta.y === 0) {
+          return
+        }
+
+        const glyphIds = new Set<string>(draft.selection.glyphIds)
+        if (draft.selection.groupIds.length) {
+          for (const groupId of draft.selection.groupIds) {
+            const group = draft.document.groups.find((item) => item.id === groupId)
+            if (group) {
+              group.glyphIds.forEach((id) => glyphIds.add(id))
+            }
+          }
+        }
+
+        if (!glyphIds.size) {
+          return
+        }
+
+        const deltaUnits = {
+          x: delta.x / BASE_UNIT_PX,
+          y: delta.y / BASE_UNIT_PX,
+        }
+
+        if (deltaUnits.x === 0 && deltaUnits.y === 0) {
+          return
+        }
+
+        let moved = false
+
+        draft.document.layers.forEach((layer) => {
+          layer.glyphs.forEach((glyph) => {
+            const isSelected = glyphIds.has(glyph.id)
+            const transform = glyph.transform ?? {
+              translation: { x: 0, y: 0 },
+              rotation: 0,
+              scale: { x: 1, y: 1 },
+            }
+            const translation = transform.translation ?? { x: 0, y: 0 }
+
+            if (isSelected) {
+              let nextTranslationX = translation.x + deltaUnits.x
+              let nextTranslationY = translation.y + deltaUnits.y
+
+              if (nextTranslationX <= -1 || nextTranslationX >= 1) {
+                const shiftX = Math.trunc(nextTranslationX)
+                glyph.position.x += shiftX
+                nextTranslationX -= shiftX
+              }
+
+              if (nextTranslationY <= -1 || nextTranslationY >= 1) {
+                const shiftY = Math.trunc(nextTranslationY)
+                glyph.position.y += shiftY
+                nextTranslationY -= shiftY
+              }
+
+              transform.translation = {
+                x: Number.isFinite(nextTranslationX) ? nextTranslationX : 0,
+                y: Number.isFinite(nextTranslationY) ? nextTranslationY : 0,
+              }
+
+              glyph.transform = {
+                translation: transform.translation,
+                rotation: transform.rotation ?? glyph.transform?.rotation ?? 0,
+                scale: transform.scale ?? glyph.transform?.scale ?? { x: 1, y: 1 },
+              }
+
+              moved = true
+            } else {
+              glyph.transform = {
+                translation,
+                rotation: transform.rotation ?? glyph.transform?.rotation ?? 0,
+                scale: transform.scale ?? glyph.transform?.scale ?? { x: 1, y: 1 },
+              }
+            }
+          })
+        })
+
+        if (!moved) {
+          return
+        }
+
+        let requiredWidth = draft.document.width
+        let requiredHeight = draft.document.height
+
+        draft.document.layers.forEach((layer) => {
+          layer.glyphs.forEach((glyph) => {
+            const translation = glyph.transform?.translation ?? { x: 0, y: 0 }
+            const rightExtent = glyph.position.x + 1 + Math.max(0, translation.x)
+            const bottomExtent = glyph.position.y + 1 + Math.max(0, translation.y)
+            requiredWidth = Math.max(requiredWidth, Math.ceil(rightExtent))
+            requiredHeight = Math.max(requiredHeight, Math.ceil(bottomExtent))
+          })
+        })
+
+        draft.document.width = requiredWidth
+        draft.document.height = requiredHeight
+
+        recalcSelectionMeta(draft)
       }),
     setCursorScale: (scale) =>
       set((draft) => {

@@ -12,5 +12,6 @@ describe('HotkeysPanel', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/increase placement scale/i)).toBeInTheDocument()
     expect(screen.getByText(/toggle grid overlay/i)).toBeInTheDocument()
+    expect(screen.getByText(/nudge selection by 2px/i)).toBeInTheDocument()
   })
 })

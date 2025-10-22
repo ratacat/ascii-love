@@ -64,6 +64,29 @@ export function useEditorHotkeys() {
         }
       }
 
+      const arrowMap: Record<string, { x: number; y: number } | undefined> = {
+        ArrowUp: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+      }
+
+      const arrowDelta = arrowMap[event.key]
+      if (arrowDelta && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        const hasSelection = state.selection.glyphIds.length > 0 || state.selection.groupIds.length > 0
+        if (!hasSelection) {
+          return
+        }
+
+        event.preventDefault()
+        const magnitude = event.shiftKey ? 20 : 2
+        state.nudgeSelectionByPixels({
+          x: arrowDelta.x * magnitude,
+          y: arrowDelta.y * magnitude,
+        })
+        return
+      }
+
       const isIncreaseKey =
         rawKey === '+' || rawKey === '=' || rawKey === 'Add' || event.code === 'NumpadAdd'
       const isDecreaseKey =

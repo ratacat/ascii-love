@@ -46,6 +46,14 @@ export const HOTKEY_SECTIONS: HotkeySection[] = [
         keys: ['Q', 'E'],
         description: 'Rotate placement preview by 45° increments',
       },
+      {
+        keys: ['Arrow Keys'],
+        description: 'Nudge selection by 2px',
+      },
+      {
+        keys: ['Shift + Arrow Keys'],
+        description: 'Nudge selection by 20px',
+      },
     ],
   },
   {

@@ -1,4 +1,5 @@
 import type {
+  CanvasDocument,
   EditorPreferences,
   LayoutState,
   PanelId,
@@ -8,6 +9,8 @@ import type {
 
 const STORAGE_KEY = 'ascii-asset-studio/layout-config.toml'
 const STORAGE_VERSION = 2
+const CANVAS_STORAGE_KEY = 'ascii-asset-studio/canvas-library.json'
+const CANVAS_STORAGE_VERSION = 1
 
 const DEFAULT_PANEL_VISIBILITY: Record<PanelId, boolean> = {
   layers: true,
@@ -48,6 +51,116 @@ export interface PersistedEditorState {
 
 interface PersistedEditorStatePayload extends PersistedEditorState {
   version: number
+}
+
+export interface PersistedCanvasRecord {
+  id: string
+  name: string
+  document: CanvasDocument
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PersistedCanvasLibrary {
+  canvases: PersistedCanvasRecord[]
+  activeCanvasId?: string
+}
+
+interface PersistedCanvasLibraryPayload extends PersistedCanvasLibrary {
+  version: number
+}
+
+const deepClone = <T>(value: T): T => {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value)
+  }
+
+  return JSON.parse(JSON.stringify(value)) as T
+}
+
+const normalizeCanvasName = (name: string | undefined): string => {
+  const trimmed = name?.trim()
+  return trimmed && trimmed.length ? trimmed : 'Untitled Canvas'
+}
+
+const sanitizeCanvasDocument = (document: CanvasDocument): CanvasDocument => {
+  const cloned = deepClone(document)
+  if (!cloned.metadata || typeof cloned.metadata !== 'object') {
+    cloned.metadata = {}
+  }
+  return cloned
+}
+
+const mapToPersistableCanvasRecord = (record: PersistedCanvasRecord): PersistedCanvasRecord => {
+  const safeName = normalizeCanvasName(record.name)
+  const createdAt = typeof record.createdAt === 'string' && record.createdAt ? record.createdAt : new Date().toISOString()
+  const updatedAt =
+    typeof record.updatedAt === 'string' && record.updatedAt ? record.updatedAt : createdAt
+
+  return {
+    id: record.id,
+    name: safeName,
+    createdAt,
+    updatedAt,
+    document: sanitizeCanvasDocument({
+      ...record.document,
+      id: record.id || record.document.id,
+      name: safeName,
+      metadata: {
+        ...record.document.metadata,
+        createdAt: record.document.metadata?.createdAt ?? createdAt,
+        updatedAt,
+      },
+    }),
+  }
+}
+
+const coerceCanvasRecord = (value: unknown): PersistedCanvasRecord | null => {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const payload = value as Record<string, unknown>
+  const id = typeof payload.id === 'string' ? payload.id : undefined
+  const name = typeof payload.name === 'string' ? payload.name : undefined
+  const createdAt =
+    typeof payload.createdAt === 'string' && payload.createdAt ? payload.createdAt : undefined
+  const updatedAt =
+    typeof payload.updatedAt === 'string' && payload.updatedAt ? payload.updatedAt : undefined
+  const document = payload.document
+
+  if (!id || !document || typeof document !== 'object') {
+    return null
+  }
+
+  const parsedDocument = sanitizeCanvasDocument(document as CanvasDocument)
+  parsedDocument.id = id
+  parsedDocument.name = normalizeCanvasName(name ?? parsedDocument.name)
+
+  const derivedCreatedAt =
+    createdAt ??
+    (typeof parsedDocument.metadata?.createdAt === 'string'
+      ? (parsedDocument.metadata.createdAt as string)
+      : new Date().toISOString())
+  const derivedUpdatedAt =
+    updatedAt ??
+    (typeof parsedDocument.metadata?.updatedAt === 'string'
+      ? (parsedDocument.metadata.updatedAt as string)
+      : derivedCreatedAt)
+
+  parsedDocument.metadata = {
+    ...parsedDocument.metadata,
+    createdAt: derivedCreatedAt,
+    updatedAt: derivedUpdatedAt,
+  }
+
+  return {
+    id,
+    name: normalizeCanvasName(parsedDocument.name),
+    createdAt: derivedCreatedAt,
+    updatedAt: derivedUpdatedAt,
+    document: parsedDocument,
+  }
 }
 
 const coerceLayout = (value: unknown): LayoutState => {
@@ -304,6 +417,76 @@ export const parseEditorStateFromToml = (input: string): PersistedEditorState | 
   }
 
   return tryParseJsonPayload(input) ?? parseLegacyEditorState(input)
+}
+
+export const loadPersistedCanvasLibrary = (): PersistedCanvasLibrary | null => {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const stored = window.localStorage.getItem(CANVAS_STORAGE_KEY)
+    if (!stored) {
+      return null
+    }
+
+    const raw = JSON.parse(stored) as Partial<PersistedCanvasLibraryPayload>
+    if (!raw || typeof raw !== 'object') {
+      return null
+    }
+
+    if (typeof raw.version !== 'number') {
+      return null
+    }
+
+    const entries: PersistedCanvasRecord[] = []
+    if (Array.isArray(raw.canvases)) {
+      for (const entry of raw.canvases) {
+        const coerced = coerceCanvasRecord(entry)
+        if (coerced) {
+          entries.push(coerced)
+        }
+      }
+    }
+
+    if (!entries.length) {
+      return null
+    }
+
+    const activeCanvasId =
+      typeof raw.activeCanvasId === 'string' && raw.activeCanvasId
+        ? raw.activeCanvasId
+        : entries[0].id
+
+    return {
+      canvases: entries,
+      activeCanvasId,
+    }
+  } catch (error) {
+    console.warn('Failed to load canvas library', error)
+    return null
+  }
+}
+
+export const persistCanvasLibrary = (payload: PersistedCanvasLibrary): boolean => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    const prepared = payload.canvases.map((entry) => mapToPersistableCanvasRecord(entry))
+    const normalized: PersistedCanvasLibraryPayload = {
+      version: CANVAS_STORAGE_VERSION,
+      activeCanvasId: payload.activeCanvasId,
+      canvases: prepared,
+    }
+
+    window.localStorage.setItem(CANVAS_STORAGE_KEY, JSON.stringify(normalized))
+    return true
+  } catch (error) {
+    console.warn('Failed to persist canvas library', error)
+    return false
+  }
 }
 
 export const loadPersistedEditorState = (): PersistedEditorState | null => {

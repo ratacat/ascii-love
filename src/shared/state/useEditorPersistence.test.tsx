@@ -2,7 +2,7 @@ import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useEditorStore } from './editorStore'
-import { useEditorPersistence } from './useEditorPersistence'
+import { requestManualCanvasSave, useEditorPersistence } from './useEditorPersistence'
 import * as persistenceModule from './persistence'
 
 function PersistenceHarness() {
@@ -54,5 +54,27 @@ describe('useEditorPersistence', () => {
     expect(lastCall).toBeTruthy()
     const payload = lastCall?.[0]
     expect(payload?.palettes?.[0]?.swatches?.[0]?.foreground).toBe('#123456')
+  })
+
+  it('supports manual save requests that immediately persist the active canvas', async () => {
+    vi.spyOn(persistenceModule, 'loadPersistedEditorState').mockReturnValue(null)
+
+    render(<PersistenceHarness />)
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().autosaveState.status).toBe('idle')
+    })
+
+    act(() => {
+      useEditorStore.getState().setDocumentName('Manual Save Test')
+    })
+
+    act(() => {
+      requestManualCanvasSave()
+    })
+
+    const nextState = useEditorStore.getState()
+    expect(nextState.canvasLibrary[0]?.name).toBe('Manual Save Test')
+    expect(nextState.hasUnsavedChanges).toBe(false)
   })
 })

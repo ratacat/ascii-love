@@ -4,6 +4,7 @@ import { useEditorStore } from './editorStore'
 import type { CanvasDocument } from '@shared/types/editor'
 
 beforeEach(() => {
+  window.localStorage.clear()
   useEditorStore.getState().resetDocument()
 })
 
@@ -80,10 +81,14 @@ describe('editorStore', () => {
     useEditorStore.getState().resetDocument(customDocument)
     const nextState = useEditorStore.getState()
 
-    expect(nextState.document).toEqual(customDocument)
+    expect(nextState.document.id).toBe(customDocument.id)
+    expect(nextState.document.name).toBe(customDocument.name)
+    expect(nextState.document.layers[0]?.id).toBe('layer-1')
     expect(nextState.activeLayerId).toBe('layer-1')
     expect(nextState.activePaletteId).toBe('palette-1')
     expect(nextState.selection.layerIds).toEqual(['layer-1'])
+    expect(nextState.canvasLibrary[0]?.id).toBe(customDocument.id)
+    expect(nextState.activeCanvasId).toBe(customDocument.id)
   })
 
   it('nudges cursor scale within configured bounds', () => {
@@ -251,5 +256,56 @@ describe('editorStore', () => {
     const activeSelection = useEditorStore.getState().selection
     expect(activeSelection.groupIds).toContain(variant?.id)
     expect(activeSelection.glyphIds).toEqual(firstGroup.glyphIds)
+  })
+
+  it('updates canvas library metadata when persisting changes', () => {
+    const store = useEditorStore.getState()
+    store.setDocumentName('Renamed Canvas')
+    const savedEntry = store.persistActiveCanvas({ source: 'manual' })
+
+    expect(savedEntry?.name).toBe('Renamed Canvas')
+    const nextState = useEditorStore.getState()
+    expect(nextState.canvasLibrary[0]?.name).toBe('Renamed Canvas')
+    expect(nextState.hasUnsavedChanges).toBe(false)
+  })
+
+  it('creates and switches between canvas documents', () => {
+    const store = useEditorStore.getState()
+    store.setDocumentName('Primary Canvas')
+    store.persistActiveCanvas({ source: 'manual' })
+
+    const secondary = store.createCanvas({ name: 'Secondary Canvas' })
+    let stateAfterCreate = useEditorStore.getState()
+    expect(stateAfterCreate.activeCanvasId).toBe(secondary.id)
+    expect(stateAfterCreate.document.id).toBe(secondary.id)
+
+    const firstEntry = useEditorStore
+      .getState()
+      .canvasLibrary.find((entry) => entry.name === 'Primary Canvas')
+    expect(firstEntry).toBeDefined()
+    if (!firstEntry) {
+      throw new Error('Primary canvas missing')
+    }
+
+    store.selectCanvas(firstEntry.id)
+    const afterSelect = useEditorStore.getState()
+    expect(afterSelect.activeCanvasId).toBe(firstEntry.id)
+    expect(afterSelect.document.id).toBe(firstEntry.id)
+    expect(afterSelect.hasUnsavedChanges).toBe(false)
+  })
+
+  it('deletes canvases and falls back to a new blank canvas when needed', () => {
+    const store = useEditorStore.getState()
+    const initialId = store.activeCanvasId
+    expect(initialId).toBeDefined()
+    if (!initialId) {
+      throw new Error('Initial canvas missing')
+    }
+
+    store.deleteCanvas(initialId)
+    const nextState = useEditorStore.getState()
+    expect(nextState.canvasLibrary).toHaveLength(1)
+    expect(nextState.activeCanvasId).not.toBe(initialId)
+    expect(nextState.hasUnsavedChanges).toBe(true)
   })
 })

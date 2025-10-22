@@ -19,6 +19,7 @@ import type {
 } from '@shared/types/editor'
 import { BASE_UNIT_PX } from '@shared/constants/canvas'
 import { slugify } from '@shared/utils/slug'
+import { persistCanvasLibrary } from './persistence'
 
 const DEFAULT_GLYPH = '▒'
 const MIN_VIEWPORT_SCALE = 0.25
@@ -71,6 +72,106 @@ const snapCursorScale = (scale: number): number =>
 const normalizeCursorScale = (scale: number): number => {
   const snapped = snapCursorScale(clampCursorScale(scale))
   return Math.round(snapped * 100) / 100
+}
+
+const cloneDocument = (document: CanvasDocument): CanvasDocument => {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(document)
+    } catch (error) {
+      const cloneErrorName = typeof error === 'object' && error && 'name' in error ? (error as { name?: string }).name : undefined
+      if (cloneErrorName === 'DataCloneError') {
+        return JSON.parse(JSON.stringify(document)) as CanvasDocument
+      }
+      throw error
+    }
+  }
+
+  return JSON.parse(JSON.stringify(document)) as CanvasDocument
+}
+
+const normalizeCanvasName = (value?: string): string => {
+  const trimmed = value?.trim() ?? ''
+  return trimmed.length ? trimmed : 'Untitled Canvas'
+}
+
+export type AutosaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
+
+export interface AutosaveState {
+  status: AutosaveStatus
+  lastSavedAt?: string
+  lastSaveSource?: 'manual' | 'autosave'
+  error?: string
+}
+
+export interface CanvasLibraryEntry {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
+  document: CanvasDocument
+}
+
+const ensureDocumentMetadata = (
+  document: CanvasDocument,
+  timestamps?: { createdAt?: string; updatedAt?: string },
+): { createdAt: string; updatedAt: string } => {
+  const now = new Date().toISOString()
+  const createdAt =
+    timestamps?.createdAt ??
+    (typeof document.metadata?.createdAt === 'string' && document.metadata.createdAt
+      ? (document.metadata.createdAt as string)
+      : now)
+  const updatedAt =
+    timestamps?.updatedAt ??
+    (typeof document.metadata?.updatedAt === 'string' && document.metadata.updatedAt
+      ? (document.metadata.updatedAt as string)
+      : createdAt)
+
+  if (!document.metadata || typeof document.metadata !== 'object') {
+    document.metadata = {}
+  }
+
+  document.metadata.createdAt = createdAt
+  document.metadata.updatedAt = updatedAt
+
+  return { createdAt, updatedAt }
+}
+
+const createCanvasEntryFromDocument = (
+  document: CanvasDocument,
+  overrides?: Partial<Omit<CanvasLibraryEntry, 'document'>>,
+): CanvasLibraryEntry => {
+  const snapshot = cloneDocument(document)
+  snapshot.id = document.id
+  snapshot.name = normalizeCanvasName(document.name)
+  const { createdAt, updatedAt } = ensureDocumentMetadata(snapshot, {
+    createdAt: overrides?.createdAt,
+    updatedAt: overrides?.updatedAt,
+  })
+
+  snapshot.metadata = {
+    ...snapshot.metadata,
+    createdAt,
+    updatedAt,
+  }
+
+  return {
+    id: snapshot.id,
+    name: normalizeCanvasName(overrides?.name ?? snapshot.name),
+    createdAt: overrides?.createdAt ?? createdAt,
+    updatedAt: overrides?.updatedAt ?? updatedAt,
+    document: snapshot,
+  }
+}
+
+const sortCanvasEntriesByRecency = (entries: CanvasLibraryEntry[]) => {
+  entries.sort((a, b) => {
+    if (a.updatedAt === b.updatedAt) {
+      return a.name.localeCompare(b.name)
+    }
+    return a.updatedAt < b.updatedAt ? 1 : -1
+  })
 }
 
 const generateId = (prefix: string): string => {
@@ -242,6 +343,7 @@ const createDefaultPalette = (): Palette => ({
 const createInitialDocument = (): CanvasDocument => {
   const layer = createBaseLayer()
   const palette = createDefaultPalette()
+  const createdAt = new Date().toISOString()
 
   return {
     id: generateId('document'),
@@ -254,7 +356,8 @@ const createInitialDocument = (): CanvasDocument => {
     animationHints: [],
     metadata: {
       schemaVersion: 1,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      updatedAt: createdAt,
     },
   }
 }
@@ -425,6 +528,13 @@ const applyLayoutPresetVisibility = (layout: LayoutState, preset: LayoutPreset) 
 const initialDocument = createInitialDocument()
 const initialPalette = initialDocument.palettes[0]
 const initialColor = normalizeColor(initialPalette?.swatches[0]?.foreground) ?? '#FFFFFF'
+const initialCanvasEntry = createCanvasEntryFromDocument(initialDocument)
+const initialAutosaveState: AutosaveState = {
+  status: 'idle',
+  lastSavedAt: initialCanvasEntry.updatedAt,
+  lastSaveSource: undefined,
+  error: undefined,
+}
 const initialState: EditorState = {
   document: initialDocument,
   cursor: {
@@ -468,6 +578,10 @@ const initialState: EditorState = {
 }
 
 export interface EditorStore extends EditorState {
+  activeCanvasId?: string
+  canvasLibrary: CanvasLibraryEntry[]
+  hasUnsavedChanges: boolean
+  autosaveState: AutosaveState
   setCursorMode: (mode: CursorMode) => void
   togglePanelVisibility: (panelId: PanelId) => void
   togglePanelCollapsed: (panelId: PanelId) => void
@@ -514,11 +628,82 @@ export interface EditorStore extends EditorState {
   setDocumentName: (name: string) => void
   setDocumentDimensions: (dimensions: { width: number; height: number }) => void
   resetDocument: (document?: CanvasDocument) => void
+  hydrateCanvasLibrary: (payload: { entries: CanvasLibraryEntry[]; activeCanvasId: string }) => void
+  selectCanvas: (canvasId: string) => void
+  createCanvas: (payload?: { name?: string; template?: CanvasDocument }) => CanvasLibraryEntry
+  deleteCanvas: (canvasId: string) => void
+  persistActiveCanvas: (options?: { source?: 'manual' | 'autosave' }) => CanvasLibraryEntry | null
+  setHasUnsavedChanges: (dirty: boolean) => void
+  setAutosaveState: (state: Partial<AutosaveState> & { status?: AutosaveStatus }) => void
+}
+
+interface LoadDocumentOptions {
+  preserveLayout?: boolean
+  preservePreferences?: boolean
+  preserveViewport?: boolean
+  preserveCursor?: boolean
+}
+
+const loadDocumentIntoEditor = (
+  draft: EditorStore,
+  document: CanvasDocument,
+  options?: LoadDocumentOptions,
+) => {
+  const cloned = cloneDocument(document)
+  const { preserveLayout = true, preservePreferences = true, preserveViewport = true, preserveCursor = true } =
+    options ?? {}
+
+  draft.document = cloned
+
+  const firstLayerId = cloned.layers[0]?.id
+  draft.activeLayerId = firstLayerId
+  draft.selection = {
+    glyphIds: [],
+    groupIds: [],
+    layerIds: firstLayerId ? [firstLayerId] : [],
+    bounds: undefined,
+  }
+
+  draft.activePaletteId = cloned.palettes[0]?.id
+  draft.activeSwatchId = getDefaultSwatchId(cloned, draft.activePaletteId)
+  draft.activeGlyphChar = DEFAULT_GLYPH
+
+  if (!preservePreferences) {
+    draft.preferences = { ...initialState.preferences }
+  }
+
+  if (!preserveLayout) {
+    draft.layout = structuredClone(initialState.layout)
+  }
+
+  if (!preserveViewport) {
+    draft.viewport = structuredClone(initialState.viewport)
+  }
+
+  if (!preserveCursor) {
+    draft.cursor = { ...initialState.cursor }
+  }
+
+  draft.cursor.gridEnabled = draft.preferences.showGrid
+  draft.cursor.crosshairEnabled = draft.preferences.showCrosshair
+
+  syncActiveColor(draft)
+  recalcSelectionMeta(draft)
+  if ((!draft.selection.layerIds || draft.selection.layerIds.length === 0) && firstLayerId) {
+    draft.selection.layerIds = [firstLayerId]
+  }
 }
 
 export const useEditorStore = create<EditorStore>()(
-  immer((set) => ({
-    ...initialState,
+  immer((set, get) => {
+    const defaultEntry = createCanvasEntryFromDocument(initialState.document)
+
+    return {
+      ...initialState,
+      activeCanvasId: defaultEntry.id,
+      canvasLibrary: [defaultEntry],
+      hasUnsavedChanges: false,
+      autosaveState: { ...initialAutosaveState, lastSavedAt: defaultEntry.updatedAt },
     setCursorMode: (mode) =>
       set((draft) => {
         draft.cursor.mode = mode
@@ -545,6 +730,237 @@ export const useEditorStore = create<EditorStore>()(
         const panel = draft.layout.panels[panelId]
         if (panel) {
           panel.collapsed = collapsed
+        }
+      }),
+    setAutosaveState: (payload) =>
+      set((draft) => {
+        draft.autosaveState = {
+          ...draft.autosaveState,
+          status: payload.status ?? draft.autosaveState.status,
+          lastSavedAt: payload.lastSavedAt ?? draft.autosaveState.lastSavedAt,
+          error: payload.error ?? (payload.status === 'error' ? draft.autosaveState.error : undefined),
+          lastSaveSource: payload.lastSaveSource ?? draft.autosaveState.lastSaveSource,
+        }
+      }),
+    hydrateCanvasLibrary: ({ entries, activeCanvasId }) =>
+      set((draft) => {
+        if (!entries.length) {
+          return
+        }
+        const normalized = entries.map((entry) => createCanvasEntryFromDocument(entry.document, entry))
+        sortCanvasEntriesByRecency(normalized)
+        const activeId = normalized.some((item) => item.id === activeCanvasId)
+          ? activeCanvasId
+          : normalized[0].id
+        const activeEntry = normalized.find((item) => item.id === activeId)
+        if (!activeEntry) {
+          return
+        }
+
+        draft.canvasLibrary = normalized
+        draft.activeCanvasId = activeId
+        loadDocumentIntoEditor(draft, activeEntry.document, {
+          preserveLayout: true,
+          preservePreferences: true,
+          preserveViewport: true,
+          preserveCursor: true,
+        })
+        draft.autosaveState = {
+          status: 'idle',
+          lastSavedAt: activeEntry.updatedAt,
+          lastSaveSource: undefined,
+          error: undefined,
+        }
+        draft.hasUnsavedChanges = false
+      }),
+    selectCanvas: (canvasId) => {
+      const state = get()
+      if (state.activeCanvasId === canvasId) {
+        return
+      }
+
+      const entry = state.canvasLibrary.find((item) => item.id === canvasId)
+      if (!entry) {
+        return
+      }
+
+      set((draft) => {
+        draft.activeCanvasId = entry.id
+        loadDocumentIntoEditor(draft, entry.document, {
+          preserveLayout: true,
+          preservePreferences: true,
+          preserveViewport: true,
+          preserveCursor: true,
+        })
+        draft.autosaveState = {
+          status: 'idle',
+          lastSavedAt: entry.updatedAt,
+          lastSaveSource: undefined,
+          error: undefined,
+        }
+        draft.hasUnsavedChanges = false
+      })
+    },
+    createCanvas: (payload) => {
+      const template = payload?.template ?? createInitialDocument()
+      if (!template.id) {
+        template.id = generateId('document')
+      }
+      template.name = payload?.name ?? template.name ?? 'Untitled Canvas'
+      ensureDocumentMetadata(template)
+      const entry = createCanvasEntryFromDocument(template)
+
+      set((draft) => {
+        draft.canvasLibrary = draft.canvasLibrary.filter((item) => item.id !== entry.id)
+        draft.canvasLibrary.push(entry)
+        sortCanvasEntriesByRecency(draft.canvasLibrary)
+        draft.activeCanvasId = entry.id
+        loadDocumentIntoEditor(draft, entry.document, {
+          preserveLayout: true,
+          preservePreferences: true,
+          preserveViewport: true,
+          preserveCursor: true,
+        })
+        draft.autosaveState = {
+          status: 'dirty',
+          lastSavedAt: entry.updatedAt,
+          lastSaveSource: undefined,
+          error: undefined,
+        }
+        draft.hasUnsavedChanges = true
+      })
+
+      return entry
+    },
+    deleteCanvas: (canvasId) => {
+      const state = get()
+      if (!state.canvasLibrary.length) {
+        return
+      }
+
+      const remaining = state.canvasLibrary.filter((entry) => entry.id !== canvasId)
+      sortCanvasEntriesByRecency(remaining)
+      if (!remaining.length) {
+        const fallbackEntry = createCanvasEntryFromDocument(createInitialDocument())
+        set((draft) => {
+          draft.canvasLibrary = [fallbackEntry]
+          draft.activeCanvasId = fallbackEntry.id
+          loadDocumentIntoEditor(draft, fallbackEntry.document, {
+            preserveLayout: true,
+            preservePreferences: true,
+            preserveViewport: true,
+            preserveCursor: true,
+          })
+          draft.autosaveState = {
+            status: 'dirty',
+            lastSavedAt: fallbackEntry.updatedAt,
+            lastSaveSource: undefined,
+            error: undefined,
+          }
+          draft.hasUnsavedChanges = true
+        })
+        const updatedAfterDeletion = get()
+        persistCanvasLibrary({
+          activeCanvasId: updatedAfterDeletion.activeCanvasId,
+          canvases: updatedAfterDeletion.canvasLibrary,
+        })
+        return
+      }
+
+      const nextActiveId =
+        state.activeCanvasId && state.activeCanvasId !== canvasId
+          ? state.activeCanvasId
+          : remaining[0].id
+
+      const activeEntry = remaining.find((item) => item.id === nextActiveId) ?? remaining[0]
+
+      set((draft) => {
+        draft.canvasLibrary = remaining
+        draft.activeCanvasId = activeEntry.id
+        loadDocumentIntoEditor(draft, activeEntry.document, {
+          preserveLayout: true,
+          preservePreferences: true,
+          preserveViewport: true,
+          preserveCursor: true,
+        })
+        draft.autosaveState = {
+          status: 'idle',
+          lastSavedAt: activeEntry.updatedAt,
+          lastSaveSource: undefined,
+          error: undefined,
+        }
+        draft.hasUnsavedChanges = false
+      })
+      const updatedAfterDeletion = get()
+      persistCanvasLibrary({
+        activeCanvasId: updatedAfterDeletion.activeCanvasId,
+        canvases: updatedAfterDeletion.canvasLibrary,
+      })
+    },
+    persistActiveCanvas: (options) => {
+      const state = get()
+      const activeId = state.activeCanvasId ?? state.document.id ?? generateId('document')
+
+      set((draft) => {
+        draft.document.id = activeId
+        draft.document.name = normalizeCanvasName(draft.document.name)
+        const { createdAt } = ensureDocumentMetadata(draft.document)
+        const updatedAt = new Date().toISOString()
+        ensureDocumentMetadata(draft.document, { createdAt, updatedAt })
+        const entry = createCanvasEntryFromDocument(draft.document, { id: activeId, createdAt, updatedAt })
+
+        const index = draft.canvasLibrary.findIndex((item) => item.id === entry.id)
+        if (index === -1) {
+          draft.canvasLibrary.push(entry)
+        } else {
+          draft.canvasLibrary[index] = entry
+        }
+        sortCanvasEntriesByRecency(draft.canvasLibrary)
+        draft.activeCanvasId = entry.id
+        draft.autosaveState = {
+          status: 'saved',
+          lastSavedAt: entry.updatedAt,
+          lastSaveSource: options?.source ?? 'autosave',
+          error: undefined,
+        }
+        draft.hasUnsavedChanges = false
+      })
+
+      const updatedState = get()
+      const success = persistCanvasLibrary({
+        activeCanvasId: updatedState.activeCanvasId,
+        canvases: updatedState.canvasLibrary,
+      })
+
+      if (!success) {
+        set((draft) => {
+          draft.hasUnsavedChanges = true
+          draft.autosaveState = {
+            status: 'error',
+            lastSavedAt: draft.autosaveState.lastSavedAt,
+            lastSaveSource: options?.source ?? 'autosave',
+            error: 'Failed to persist canvas changes',
+          }
+        })
+        return null
+      }
+
+      return updatedState.canvasLibrary.find((item) => item.id === updatedState.activeCanvasId) ?? null
+    },
+    setHasUnsavedChanges: (dirty) =>
+      set((draft) => {
+        draft.hasUnsavedChanges = dirty
+        if (dirty) {
+          draft.autosaveState = {
+            ...draft.autosaveState,
+            status: 'dirty',
+            error: undefined,
+          }
+        } else if (draft.autosaveState.status === 'dirty') {
+          draft.autosaveState = {
+            ...draft.autosaveState,
+            status: 'idle',
+          }
         }
       }),
     setLayoutPreset: (preset) =>
@@ -1221,6 +1637,14 @@ export const useEditorStore = create<EditorStore>()(
     setDocumentName: (name) =>
       set((draft) => {
         draft.document.name = name
+        const canvasId = draft.activeCanvasId ?? draft.document.id
+        if (!canvasId) {
+          return
+        }
+        const entry = draft.canvasLibrary.find((item) => item.id === canvasId)
+        if (entry) {
+          entry.name = normalizeCanvasName(name)
+        }
       }),
     setDocumentDimensions: ({ width, height }) =>
       set((draft) => {
@@ -1229,31 +1653,28 @@ export const useEditorStore = create<EditorStore>()(
       }),
     resetDocument: (document) =>
       set((draft) => {
-        if (document) {
-          draft.document = document
-        } else {
-          draft.document = createInitialDocument()
-        }
+        const nextDocument = document ? cloneDocument(document) : createInitialDocument()
+        ensureDocumentMetadata(nextDocument)
+        const entry = createCanvasEntryFromDocument(nextDocument)
 
-        draft.activeLayerId = draft.document.layers[0]?.id
-        draft.selection = {
-          glyphIds: [],
-          groupIds: [],
-          layerIds: draft.activeLayerId ? [draft.activeLayerId] : [],
+        draft.canvasLibrary = [entry]
+        draft.activeCanvasId = entry.id
+        loadDocumentIntoEditor(draft, nextDocument, {
+          preserveLayout: false,
+          preservePreferences: false,
+          preserveViewport: false,
+          preserveCursor: false,
+        })
+        draft.autosaveState = {
+          status: 'idle',
+          lastSavedAt: entry.updatedAt,
+          lastSaveSource: undefined,
+          error: undefined,
         }
-        draft.activePaletteId = draft.document.palettes[0]?.id
-        draft.activeSwatchId = getDefaultSwatchId(draft.document, draft.activePaletteId)
-        draft.activeGlyphChar = DEFAULT_GLYPH
-        const palette = getPaletteById(draft.document, draft.activePaletteId)
-        const color = normalizeColor(palette?.swatches[0]?.foreground) ?? '#FFFFFF'
-        draft.activeColor = color
-        draft.cursor = { ...initialState.cursor }
-        draft.preferences = { ...initialState.preferences }
-        draft.layout = structuredClone(initialState.layout)
-        draft.viewport = structuredClone(initialState.viewport)
-        syncActiveColor(draft)
+        draft.hasUnsavedChanges = false
       }),
-  })),
+  }
+  }),
 )
 
 export const getEditorState = (): EditorState => useEditorStore.getState()

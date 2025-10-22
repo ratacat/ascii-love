@@ -2,6 +2,7 @@ import './Toolbar.css'
 
 import { TOOLBAR_TOOLS } from '@shared/constants/tools'
 import { useEditorStore } from '@shared/state/editorStore'
+import { DocumentControls } from './DocumentControls'
 
 export function Toolbar() {
   const activeMode = useEditorStore((state) => state.cursor.mode)
@@ -37,6 +38,8 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar__spacer" />
+
+      <DocumentControls />
 
       <div className="toolbar__toggles" aria-label="Viewport toggles">
         <label className="toolbar__toggle">

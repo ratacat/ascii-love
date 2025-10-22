@@ -32,11 +32,11 @@ export const HOTKEY_SECTIONS: HotkeySection[] = [
     entries: [
       {
         keys: ['+', '='],
-        description: 'Increase placement scale',
+        description: 'Increase glyph size',
       },
       {
         keys: ['-', '_'],
-        description: 'Decrease placement scale',
+        description: 'Decrease glyph size',
       },
       {
         keys: ['W', 'A', 'S', 'D'],
@@ -79,6 +79,10 @@ export const HOTKEY_SECTIONS: HotkeySection[] = [
       {
         keys: ['Delete', 'Backspace'],
         description: 'Remove selected glyphs',
+      },
+      {
+        keys: ['Ctrl/Cmd + G'],
+        description: 'Toggle grouping for current selection',
       },
     ],
   },

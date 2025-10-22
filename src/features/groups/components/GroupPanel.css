@@ -1,0 +1,122 @@
+.group-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+}
+
+.group-panel__section {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.group-panel__section-title {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.group-panel__item-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.group-panel__item-input:focus {
+  outline: none;
+  border-color: rgba(112, 214, 255, 0.6);
+  box-shadow: 0 0 0 1px rgba(112, 214, 255, 0.3);
+}
+
+.group-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.group-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.group-panel__item--active {
+  border-color: rgba(112, 214, 255, 0.4);
+  box-shadow: 0 0 0 1px rgba(112, 214, 255, 0.25);
+}
+
+.group-panel__item-input {
+  flex: 1;
+  cursor: text;
+}
+
+.group-panel__item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.group-panel__item-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.group-panel__item-action {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.group-panel__item-action:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.group-panel__item-action--primary {
+  border-color: rgba(112, 214, 255, 0.5);
+  background: rgba(112, 214, 255, 0.18);
+  color: rgba(112, 214, 255, 0.95);
+}
+
+.group-panel__item-action--primary:hover {
+  background: rgba(112, 214, 255, 0.28);
+  border-color: rgba(112, 214, 255, 0.7);
+}
+
+.group-panel__item-action--danger {
+  border-color: rgba(255, 86, 86, 0.45);
+  background: rgba(255, 86, 86, 0.14);
+  color: rgba(255, 172, 172, 0.95);
+}
+
+.group-panel__item-action--danger:hover {
+  background: rgba(255, 86, 86, 0.22);
+  border-color: rgba(255, 86, 86, 0.6);
+}
+
+.group-panel__empty {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.4;
+}

@@ -90,7 +90,7 @@ export interface SelectionState {
   }
 }
 
-export type PanelId = 'layers' | 'glyphLibrary' | 'inspector' | 'palette' | 'hotkeys'
+export type PanelId = 'layers' | 'groups' | 'glyphLibrary' | 'inspector' | 'palette' | 'hotkeys'
 
 export interface PanelState {
   id: PanelId

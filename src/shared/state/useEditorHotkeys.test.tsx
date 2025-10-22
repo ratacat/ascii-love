@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { PanelChrome } from '@shared/ui/PanelChrome'
@@ -132,5 +132,76 @@ describe('useEditorHotkeys', () => {
 
     const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
     expect(moved?.transform.translation.y ?? 0).toBeCloseTo(20 / 24)
+  })
+
+  it('creates a new group for the current selection when pressing Cmd/Ctrl + G', async () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    fireEvent.keyDown(window, { key: 'g', code: 'KeyG', metaKey: true })
+    await waitFor(() => {
+      expect(useEditorStore.getState().document.groups).toHaveLength(1)
+    })
+
+    fireEvent.keyDown(window, { key: 'g', code: 'KeyG', ctrlKey: true })
+    await waitFor(() => {
+      const groups = useEditorStore.getState().document.groups
+      expect(groups).toHaveLength(2)
+      const latestGroup = groups.at(-1)
+      expect(useEditorStore.getState().selection.groupIds).toContain(latestGroup?.id)
+    })
+  })
+
+  it('creates a group even when focus is on a text input', async () => {
+    render(<HotkeyHarness />)
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+    store.selectGlyphs([glyph.id])
+
+    fireEvent.keyDown(input, { key: 'g', code: 'KeyG', metaKey: true })
+
+    await waitFor(() => {
+      expect(useEditorStore.getState().document.groups).toHaveLength(1)
+    })
+
+    input.remove()
+  })
+
+  it('ignores arrow nudge when focus is on group rename input', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+
+    const input = document.createElement('input')
+    input.className = 'group-panel__item-input'
+    document.body.appendChild(input)
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'ArrowRight', code: 'ArrowRight' })
+
+    const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(moved?.transform.translation.x ?? 0).toBeCloseTo(0)
+
+    input.remove()
   })
 })

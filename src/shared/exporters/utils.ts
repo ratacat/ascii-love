@@ -5,7 +5,7 @@ import type {
   GlyphInstance,
   SelectionState,
 } from '@shared/types/editor'
-
+import { ensureUniqueSlug, slugify } from '@shared/utils/slug'
 import type { ExportScope } from './types'
 
 const deepClone = <T>(value: T): T => {
@@ -15,14 +15,6 @@ const deepClone = <T>(value: T): T => {
 
   return JSON.parse(JSON.stringify(value)) as T
 }
-
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-')
-    .slice(0, 80) || 'asset'
 
 interface BuildExportDocumentOptions {
   document: CanvasDocument
@@ -160,6 +152,26 @@ const extractSelection = (document: CanvasDocument, selection: SelectionState): 
   }
 }
 
+const buildGroupSelectorMap = (groups: GlyphGroup[]): Record<string, string> => {
+  const selectors: Record<string, string> = {}
+  const used = new Map<string, number>()
+
+  groups.forEach((group) => {
+    const source = group.addressableKey && group.addressableKey.trim()
+    const base = slugify(source ?? group.name ?? group.id, 'group')
+    selectors[group.id] = ensureUniqueSlug(base, used)
+  })
+
+  return selectors
+}
+
+const attachGroupSelectors = (document: CanvasDocument): void => {
+  document.metadata = {
+    ...document.metadata,
+    groupSelectors: buildGroupSelectorMap(document.groups),
+  }
+}
+
 export const buildExportDocument = ({
   document,
   selection,
@@ -175,11 +187,14 @@ export const buildExportDocument = ({
   }
 
   if (scope === 'document' || !selection.glyphIds.length) {
-    return trimDocumentToBounds(base, padding)
+    const trimmed = trimDocumentToBounds(base, padding)
+    attachGroupSelectors(trimmed)
+    return trimmed
   }
 
   const selectionData = extractSelection(document, selection)
   if (!selectionData) {
+    attachGroupSelectors(base)
     return base
   }
 
@@ -223,7 +238,7 @@ export const buildExportDocument = ({
     }))
     .filter((hint) => hint.targetGroupIds.length)
 
-  return {
+  const output: CanvasDocument = {
     ...base,
     id: `${document.id}-selection`,
     name: `${document.name} Selection`,
@@ -233,6 +248,9 @@ export const buildExportDocument = ({
     groups,
     animationHints,
   }
+
+  attachGroupSelectors(output)
+  return output
 }
 
 export const deriveExportFilename = (
@@ -243,7 +261,7 @@ export const deriveExportFilename = (
 ): string => {
   const name = baseName ?? document.name ?? 'asset'
   const suffix = scope === 'selection' ? '-selection' : ''
-  return `${slugify(name)}${suffix ? `-${suffix.replace(/^-/, '')}` : ''}.${extension}`
+  return `${slugify(name, 'asset')}${suffix ? `-${suffix.replace(/^-/, '')}` : ''}.${extension}`
 }
 
 export const escapeXml = (value: string): string =>

@@ -10,7 +10,7 @@ describe('HotkeysPanel', () => {
     expect(
       screen.getByRole('heading', { name: /cursor modes/i, level: 3 }),
     ).toBeInTheDocument()
-    expect(screen.getByText(/increase placement scale/i)).toBeInTheDocument()
+    expect(screen.getByText(/increase glyph size/i)).toBeInTheDocument()
     expect(screen.getByText(/toggle grid overlay/i)).toBeInTheDocument()
     expect(screen.getByText(/nudge selection by 2px/i)).toBeInTheDocument()
   })

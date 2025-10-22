@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { useEditorStore } from './editorStore'
 import { loadPersistedEditorState, persistEditorState } from './persistence'
@@ -13,6 +13,27 @@ export function useEditorPersistence() {
 
   const hasHydrated = useRef(false)
   const readyToPersist = useRef(false)
+
+  const palettesSignature = useMemo(
+    () =>
+      JSON.stringify(
+        palettes.map((palette) => ({
+          id: palette.id,
+          name: palette.name,
+          locked: palette.locked,
+          mutable: palette.mutable,
+          swatches: palette.swatches.map((swatch) => ({
+            id: swatch.id,
+            name: swatch.name,
+            foreground: swatch.foreground,
+            background: swatch.background,
+            accent: swatch.accent,
+            locked: swatch.locked,
+          })),
+        })),
+      ),
+    [palettes],
+  )
 
   useEffect(() => {
     if (hasHydrated.current) {
@@ -36,5 +57,5 @@ export function useEditorPersistence() {
       return
     }
     persistEditorState({ layout, preferences, palettes })
-  }, [layout, palettes, preferences])
+  }, [layout, palettes, palettesSignature, preferences])
 }

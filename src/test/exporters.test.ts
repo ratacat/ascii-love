@@ -99,6 +99,8 @@ describe('export document utilities', () => {
     expect(exported.layers[0].glyphs[0].position).toEqual({ x: 2, y: 2 })
     expect(exported.groups).toHaveLength(1)
     expect(exported.groups[0].glyphIds).toEqual(['glyph-2'])
+    const selectors = exported.metadata.groupSelectors as Record<string, string> | undefined
+    expect(selectors).toEqual({ 'group-1': 'testgroup' })
   })
 
   it('returns a full clone when no selection provided', () => {
@@ -112,6 +114,8 @@ describe('export document utilities', () => {
     const exported = buildExportDocument({ document, selection, scope: 'selection', padding: 1 })
     expect(exported.layers[0].glyphs).toHaveLength(document.layers[0].glyphs.length)
     expect(exported.metadata.exportScope).toBe('selection')
+    const selectors = exported.metadata.groupSelectors as Record<string, string> | undefined
+    expect(selectors).toEqual({ 'group-1': 'testgroup' })
   })
 })
 

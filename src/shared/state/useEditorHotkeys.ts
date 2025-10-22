@@ -8,18 +8,41 @@ const INTERACTIVE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 export function useEditorHotkeys() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target) {
-        if (INTERACTIVE_TAGS.has(target.tagName) || target.isContentEditable) {
-          return
+      const target = event.target as EventTarget | null
+      const elementTarget = target instanceof HTMLElement ? target : null
+      const rawKey = event.key
+      const key = rawKey.toLowerCase()
+      const isGroupNameInput = Boolean(elementTarget?.matches('.group-panel__item-input'))
+
+      let isInteractiveTarget = Boolean(
+        elementTarget && (INTERACTIVE_TAGS.has(elementTarget.tagName) || elementTarget.isContentEditable),
+      )
+
+      if (isGroupNameInput) {
+        const delegateToHotkeys =
+          event.metaKey || event.ctrlKey || rawKey === 'Escape' || rawKey === 'Enter'
+
+        if (delegateToHotkeys) {
+          isInteractiveTarget = false
         }
       }
 
       const state = useEditorStore.getState()
-      const rawKey = event.key
-      const key = rawKey.toLowerCase()
 
-      if ((event.code === 'Space' && event.shiftKey) || key === 'g') {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && key === 'g') {
+        event.preventDefault()
+        const hasSelection = state.selection.glyphIds.length > 0 || state.selection.groupIds.length > 0
+        if (hasSelection) {
+          state.createGroupFromSelection()
+        }
+        return
+      }
+
+      if (isInteractiveTarget) {
+        return
+      }
+
+      if (!event.metaKey && !event.ctrlKey && !event.altKey && ((event.code === 'Space' && event.shiftKey) || key === 'g')) {
         event.preventDefault()
         state.toggleGrid()
         return

@@ -35,6 +35,13 @@ export function CanvasViewport() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const marqueeBaseSelectionRef = useRef<string[]>([])
 
+  const releaseEditingFocus = useCallback(() => {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active.matches('.group-panel__item-input')) {
+      active.blur()
+    }
+  }, [])
+
   const stageDimensions = useMemo(() => {
     const width = (document.width + paddingUnits * 2) * unitSize
     const height = (document.height + paddingUnits * 2) * unitSize
@@ -163,6 +170,7 @@ export function CanvasViewport() {
   const handleGlyphInteraction = useCallback(
     (glyph: GlyphInstance, event: React.MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation()
+      releaseEditingFocus()
 
       if (cursor.mode === 'place') {
         const position = pointerToDocumentPosition(event)
@@ -174,10 +182,14 @@ export function CanvasViewport() {
       }
 
       if (cursor.mode === 'select') {
-        selectGlyphs([glyph.id], { additive: event.shiftKey })
+        if (event.shiftKey) {
+          selectGlyphs([glyph.id], { toggle: true })
+        } else {
+          selectGlyphs([glyph.id])
+        }
       }
     },
-    [applySnapping, cursor.mode, placeGlyph, pointerToDocumentPosition, selectGlyphs],
+    [applySnapping, cursor.mode, placeGlyph, pointerToDocumentPosition, releaseEditingFocus, selectGlyphs],
   )
 
   const handleStageMouseDown = useCallback(
@@ -188,6 +200,7 @@ export function CanvasViewport() {
       if (event.target !== event.currentTarget) {
         return
       }
+      releaseEditingFocus()
       const position = pointerToDocumentPosition(event)
       if (!position) {
         return
@@ -201,7 +214,7 @@ export function CanvasViewport() {
         additive,
       })
     },
-    [cursor.mode, pointerToDocumentPosition, selection.glyphIds],
+    [cursor.mode, pointerToDocumentPosition, releaseEditingFocus, selection.glyphIds],
   )
 
   const finalizeMarquee = useCallback(

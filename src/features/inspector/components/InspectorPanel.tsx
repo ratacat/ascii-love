@@ -1,27 +1,35 @@
 import './InspectorPanel.css'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { useEditorStore } from '@shared/state/editorStore'
+
+interface GlyphDetail {
+  id: string
+  char: string
+  layerName: string
+  paletteName?: string
+  swatchName?: string
+  foreground: string
+  background?: string
+}
 
 export function InspectorPanel() {
   const document = useEditorStore((state) => state.document)
   const selection = useEditorStore((state) => state.selection)
-  const createGroupFromSelection = useEditorStore((state) => state.createGroupFromSelection)
-  const updateGroup = useEditorStore((state) => state.updateGroup)
-  const deleteGroup = useEditorStore((state) => state.deleteGroup)
-  const selectGlyphs = useEditorStore((state) => state.selectGlyphs)
-  const setSelection = useEditorStore((state) => state.setSelection)
-
-  const [groupName, setGroupName] = useState('')
-  const [groupKey, setGroupKey] = useState('')
 
   const selectionSummary = selection.glyphIds.length
     ? `${selection.glyphIds.length} glyph${selection.glyphIds.length === 1 ? '' : 's'}`
     : 'No glyphs selected'
 
+  const formatCoord = useCallback((value: number): string => {
+    const clamped = Number.isFinite(value) ? value : 0
+    const rounded = Number(clamped.toFixed(2))
+    return rounded.toString()
+  }, [])
+
   const selectionBounds = selection.bounds
-    ? `${selection.bounds.min.x},${selection.bounds.min.y} → ${selection.bounds.max.x},${selection.bounds.max.y}`
+    ? `${formatCoord(selection.bounds.min.x)},${formatCoord(selection.bounds.min.y)} → ${formatCoord(selection.bounds.max.x)},${formatCoord(selection.bounds.max.y)}`
     : '—'
 
   const selectedGroups = useMemo(
@@ -29,34 +37,60 @@ export function InspectorPanel() {
     [document.groups, selection.groupIds],
   )
 
-  const sortedGroups = useMemo(
-    () => [...document.groups].sort((a, b) => a.name.localeCompare(b.name)),
-    [document.groups],
-  )
-
-  const handleCreateGroup = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!selection.glyphIds.length || !groupName.trim()) {
-      return
+  const glyphDetails = useMemo(() => {
+    if (!selection.glyphIds.length) {
+      return [] as GlyphDetail[]
     }
 
-    createGroupFromSelection({
-      name: groupName.trim(),
-      addressableKey: groupKey.trim() || undefined,
+    const glyphIdSet = new Set(selection.glyphIds)
+    const paletteMap = new Map(document.palettes.map((palette) => [palette.id, palette]))
+    const details: GlyphDetail[] = []
+
+    document.layers.forEach((layer) => {
+      layer.glyphs.forEach((glyph) => {
+        if (!glyphIdSet.has(glyph.id)) {
+          return
+        }
+
+        const palette = paletteMap.get(glyph.paletteId)
+        const swatch = palette?.swatches.find((entry) => entry.id === glyph.swatchId)
+        const foreground = (glyph.foreground ?? swatch?.foreground ?? '#FFFFFF').toUpperCase()
+        const background = glyph.background ?? swatch?.background
+
+        details.push({
+          id: glyph.id,
+          char: glyph.char,
+          layerName: layer.name,
+          paletteName: palette?.name,
+          swatchName: swatch?.name,
+          foreground,
+          background: background ? background.toUpperCase() : undefined,
+        })
+      })
     })
-    setGroupName('')
-    setGroupKey('')
-  }
 
-  const handleFocusGroup = (groupId: string) => {
-    const group = document.groups.find((item) => item.id === groupId)
-    if (!group) {
-      return
+    return details
+  }, [document.layers, document.palettes, selection.glyphIds])
+
+  const primaryGlyph = glyphDetails[0]
+  const { uniqueCharCount, charPreview, uniqueForegrounds } = useMemo(() => {
+    const charSet = new Set<string>()
+    const foregroundSet = new Set<string>()
+
+    glyphDetails.forEach((detail) => {
+      charSet.add(detail.char)
+      foregroundSet.add(detail.foreground)
+    })
+
+    return {
+      uniqueCharCount: charSet.size,
+      charPreview: charSet.size <= 3 ? Array.from(charSet) : [],
+      uniqueForegrounds: Array.from(foregroundSet),
     }
-
-    selectGlyphs(group.glyphIds)
-    setSelection({ groupIds: [groupId] })
-  }
+  }, [glyphDetails])
+  const layersLabel = selection.layerIds
+    .map((layerId) => document.layers.find((layer) => layer.id === layerId)?.name ?? 'Unknown')
+    .join(', ')
 
   return (
     <div className="inspector-panel">
@@ -64,119 +98,87 @@ export function InspectorPanel() {
         <header className="inspector-panel__section-title">Selection</header>
         <p className="inspector-panel__metric">{selectionSummary}</p>
         {selection.layerIds.length ? (
-          <p className="inspector-panel__meta">
-            Layers:{' '}
-            {selection.layerIds
-              .map((layerId) => document.layers.find((layer) => layer.id === layerId)?.name ?? 'Unknown')
-              .join(', ')}
-          </p>
+          <p className="inspector-panel__meta">Layers: {layersLabel}</p>
         ) : null}
         <p className="inspector-panel__meta">Bounds: {selectionBounds}</p>
-      </section>
-
-      <section>
-        <header className="inspector-panel__section-title">Group Selection</header>
-        <form className="inspector-panel__group-form" onSubmit={handleCreateGroup}>
-          <label className="inspector-panel__field">
-            <span>Name</span>
-            <input
-              type="text"
-              value={groupName}
-              onChange={(event) => setGroupName(event.target.value)}
-              placeholder="LoreHighlight"
-            />
-          </label>
-          <label className="inspector-panel__field">
-            <span>Addressable Key</span>
-            <input
-              type="text"
-              value={groupKey}
-              onChange={(event) => setGroupKey(event.target.value)}
-              placeholder="dayNightPalette"
-            />
-          </label>
-          <button type="submit" disabled={!selection.glyphIds.length || !groupName.trim()}>
-            Tag {selection.glyphIds.length || '0'} glyph(s)
-          </button>
-        </form>
-        {!selection.glyphIds.length ? (
-          <p className="inspector-panel__empty">
-            Select one or more glyphs to establish an addressable group target.
-          </p>
+        {glyphDetails.length ? (
+          <>
+            <p className="inspector-panel__meta">
+              Unique characters: {uniqueCharCount}
+              {charPreview.length ? ` (${charPreview.join(', ')})` : ''}
+            </p>
+            <p className="inspector-panel__meta">
+              Foreground variants: {uniqueForegrounds.length}
+            </p>
+          </>
         ) : null}
       </section>
 
       <section>
-        <header className="inspector-panel__section-title">Addressable Groups</header>
-        {selectedGroups.length ? (
-          <ul className="inspector-panel__list">
-            {selectedGroups.map((group) => (
-              <li key={group.id}>
-                <div className="inspector-panel__group-header">
-                  <strong>{group.name}</strong>
-                  <span className="inspector-panel__pill">{group.glyphIds.length} glyphs</span>
-                </div>
-                <label className="inspector-panel__field inspector-panel__field--compact">
-                  <span>Key</span>
-                  <input
-                    type="text"
-                    value={group.addressableKey ?? ''}
-                    onChange={(event) =>
-                      updateGroup(group.id, { addressableKey: event.target.value || undefined })
-                    }
-                    placeholder="runtimeOverrideKey"
+        <header className="inspector-panel__section-title">Glyph Details</header>
+        {primaryGlyph ? (
+          <div className="inspector-panel__glyph">
+            <div
+              className="inspector-panel__glyph-preview"
+              style={{
+                color: primaryGlyph.foreground,
+                backgroundColor: primaryGlyph.background ?? 'transparent',
+              }}
+              aria-hidden
+            >
+              {primaryGlyph.char}
+            </div>
+            <div className="inspector-panel__glyph-meta">
+              <p className="inspector-panel__meta">
+                Palette: {primaryGlyph.paletteName ?? '—'}
+                {primaryGlyph.swatchName ? ` • ${primaryGlyph.swatchName}` : ''}
+              </p>
+              <p className="inspector-panel__meta inspector-panel__meta--color">
+                Foreground{' '}
+                <span
+                  className="inspector-panel__color-chip"
+                  style={{ backgroundColor: primaryGlyph.foreground }}
+                  aria-hidden
+                />
+                <code>{primaryGlyph.foreground}</code>
+              </p>
+              {primaryGlyph.background ? (
+                <p className="inspector-panel__meta inspector-panel__meta--color">
+                  Background{' '}
+                  <span
+                    className="inspector-panel__color-chip inspector-panel__color-chip--muted"
+                    style={{ backgroundColor: primaryGlyph.background }}
+                    aria-hidden
                   />
-                </label>
-              </li>
-            ))}
-          </ul>
+                  <code>{primaryGlyph.background}</code>
+                </p>
+              ) : null}
+            </div>
+          </div>
         ) : (
-          <p className="inspector-panel__empty">
-            Tag selections with addressable keys so the runtime can theme them dynamically.
-          </p>
+          <p className="inspector-panel__empty">Select a glyph to view palette and color metadata.</p>
         )}
       </section>
 
       <section>
-        <header className="inspector-panel__section-title">All Groups</header>
-        {sortedGroups.length ? (
-          <ul className="inspector-panel__list inspector-panel__list--rows">
-            {sortedGroups.map((group) => (
-              <li key={group.id} className="inspector-panel__group-row">
-                <button
-                  type="button"
-                  className="inspector-panel__group-focus"
-                  onClick={() => handleFocusGroup(group.id)}
-                >
-                  <span className="inspector-panel__group-name">{group.name}</span>
-                  <span className="inspector-panel__group-meta">{group.glyphIds.length} glyphs</span>
-                </button>
-                <div className="inspector-panel__group-controls">
-                  <input
-                    className="inspector-panel__group-key"
-                    type="text"
-                    value={group.addressableKey ?? ''}
-                    onChange={(event) =>
-                      updateGroup(group.id, { addressableKey: event.target.value || undefined })
-                    }
-                    placeholder="addressableKey"
-                  />
-                  <button
-                    type="button"
-                    className="inspector-panel__group-delete"
-                    onClick={() => deleteGroup(group.id)}
-                    aria-label={`Delete group ${group.name}`}
-                  >
-                    ✕
-                  </button>
+        <header className="inspector-panel__section-title">Groups</header>
+        {selectedGroups.length ? (
+          <ul className="inspector-panel__group-summary">
+            {selectedGroups.map((group) => (
+              <li key={group.id}>
+                <div className="inspector-panel__group-name-row">
+                  <strong>{group.name}</strong>
+                  <span className="inspector-panel__pill">{group.glyphIds.length} glyphs</span>
                 </div>
+                <p className="inspector-panel__meta inspector-panel__meta--small">
+                  Addressable key:{' '}
+                  {group.addressableKey ? <code>{group.addressableKey}</code> : <span>—</span>}
+                </p>
               </li>
             ))}
           </ul>
         ) : (
-          <p className="inspector-panel__empty">
-            Groups organize selections for animation previews and runtime theming hooks.
-          </p>
+          <p className="inspector-panel__empty">Assign groups from the Groups panel to organize selections.</p>
         )}
       </section>
     </div>

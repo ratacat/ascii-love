@@ -2,6 +2,7 @@ import './App.css'
 
 import { CanvasViewport } from '@features/canvas/components/CanvasViewport'
 import { GlyphLibraryPanel } from '@features/glyphs/components/GlyphLibraryPanel'
+import { GroupPanel } from '@features/groups/components/GroupPanel'
 import { InspectorPanel } from '@features/inspector/components/InspectorPanel'
 import { LayersPanel } from '@features/layers/components/LayersPanel'
 import { PalettePanel } from '@features/palette/components/PalettePanel'
@@ -25,6 +26,9 @@ export function App() {
         <aside className="side-panel side-panel--left">
           <PanelChrome id="layers" title="Layers">
             <LayersPanel />
+          </PanelChrome>
+          <PanelChrome id="groups" title="Groups">
+            <GroupPanel />
           </PanelChrome>
           <PanelChrome id="glyphLibrary" title="Glyph Library">
             <GlyphLibraryPanel />

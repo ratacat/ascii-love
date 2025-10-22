@@ -127,6 +127,26 @@ describe('editorStore', () => {
     expect(moved?.transform.translation.x ?? 0).toBeCloseTo(2 / 24)
   })
 
+  it('toggles glyph selection when toggle option is provided', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    store.placeGlyph({ x: 1, y: 0 })
+
+    const glyphs = useEditorStore.getState().document.layers[0]?.glyphs.slice(-2)
+    expect(glyphs?.length).toBe(2)
+    if (!glyphs) {
+      throw new Error('Glyphs not created')
+    }
+
+    store.selectGlyphs([glyphs[0].id])
+    store.selectGlyphs([glyphs[1].id], { toggle: true })
+
+    expect(useEditorStore.getState().selection.glyphIds).toEqual([glyphs[0].id, glyphs[1].id])
+
+    store.selectGlyphs([glyphs[0].id], { toggle: true })
+    expect(useEditorStore.getState().selection.glyphIds).toEqual([glyphs[1].id])
+  })
+
   it('nudges group selections when only a group is selected', () => {
     const store = useEditorStore.getState()
     store.placeGlyph({ x: 1, y: 1 })
@@ -146,5 +166,90 @@ describe('editorStore', () => {
 
     const moved = useEditorStore.getState().document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
     expect(moved?.transform.translation.y ?? 0).toBeCloseTo(20 / 24)
+  })
+
+  it('toggles grouping for the current selection and assigns defaults', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 2, y: 2 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    store.toggleSelectionGrouping()
+
+    const stateAfterGroup = useEditorStore.getState()
+    expect(stateAfterGroup.document.groups).toHaveLength(1)
+    const group = stateAfterGroup.document.groups[0]
+    expect(group.glyphIds).toEqual([glyph.id])
+    expect(group.name).toBe('Group 1')
+    expect(group.addressableKey).toBe('group1')
+    expect(stateAfterGroup.selection.groupIds).toContain(group.id)
+
+    store.toggleSelectionGrouping()
+    const stateAfterUngroup = useEditorStore.getState()
+    expect(stateAfterUngroup.document.groups).toHaveLength(0)
+    const glyphAfterUngroup = stateAfterUngroup.document.layers[0]?.glyphs.find((item) => item.id === glyph.id)
+    expect(glyphAfterUngroup?.groupIds).toEqual([])
+    expect(stateAfterUngroup.selection.groupIds).toHaveLength(0)
+  })
+
+  it('generates unique addressable keys when toggling with overrides', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const firstGlyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!firstGlyph) {
+      throw new Error('First glyph not created')
+    }
+
+    store.selectGlyphs([firstGlyph.id])
+    store.toggleSelectionGrouping({ name: 'Scene Highlight', addressableKey: 'hero' })
+
+    store.placeGlyph({ x: 4, y: 4 })
+    const secondGlyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!secondGlyph) {
+      throw new Error('Second glyph not created')
+    }
+
+    store.selectGlyphs([secondGlyph.id])
+    store.toggleSelectionGrouping({ name: 'Scene Highlight', addressableKey: 'hero' })
+
+    const groups = useEditorStore.getState().document.groups
+    expect(groups).toHaveLength(2)
+    const keys = groups.map((group) => group.addressableKey)
+    expect(keys).toEqual(['hero', 'hero2'])
+  })
+
+  it('creates a group from an existing group selection', () => {
+    const store = useEditorStore.getState()
+    store.placeGlyph({ x: 0, y: 0 })
+    const glyph = useEditorStore.getState().document.layers[0]?.glyphs.at(-1)
+    if (!glyph) {
+      throw new Error('Glyph not created')
+    }
+
+    store.selectGlyphs([glyph.id])
+    store.createGroupFromSelection({ name: 'Primary Group' })
+
+    const firstGroup = useEditorStore.getState().document.groups[0]
+    expect(firstGroup).toBeDefined()
+    if (!firstGroup) {
+      throw new Error('First group missing')
+    }
+
+    store.clearSelection()
+    store.setSelection({ groupIds: [firstGroup.id], glyphIds: [] })
+    store.createGroupFromSelection({ name: 'Variant Group' })
+
+    const groups = useEditorStore.getState().document.groups
+    expect(groups).toHaveLength(2)
+
+    const variant = groups.find((group) => group.name === 'Variant Group')
+    expect(variant).toBeDefined()
+    expect(variant?.glyphIds).toEqual(firstGroup.glyphIds)
+    const activeSelection = useEditorStore.getState().selection
+    expect(activeSelection.groupIds).toContain(variant?.id)
+    expect(activeSelection.glyphIds).toEqual(firstGroup.glyphIds)
   })
 })

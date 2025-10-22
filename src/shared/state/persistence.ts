@@ -11,6 +11,7 @@ const STORAGE_VERSION = 2
 
 const DEFAULT_PANEL_VISIBILITY: Record<PanelId, boolean> = {
   layers: true,
+  groups: true,
   glyphLibrary: true,
   inspector: true,
   palette: true,
@@ -27,6 +28,7 @@ const createEmptyLayout = (): LayoutState => ({
   activePreset: 'classic',
   panels: {
     layers: { id: 'layers', visible: DEFAULT_PANEL_VISIBILITY.layers, collapsed: false },
+    groups: { id: 'groups', visible: DEFAULT_PANEL_VISIBILITY.groups, collapsed: false },
     glyphLibrary: {
       id: 'glyphLibrary',
       visible: DEFAULT_PANEL_VISIBILITY.glyphLibrary,

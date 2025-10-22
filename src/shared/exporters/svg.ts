@@ -13,6 +13,14 @@ export const svgExporter: Exporter = {
     const exportDocument = buildExportDocument({ document, selection, scope, padding })
     const width = exportDocument.width * CELL_SIZE
     const height = exportDocument.height * CELL_SIZE
+    const groupSelectors =
+      (exportDocument.metadata.groupSelectors as Record<string, string> | undefined) ?? {}
+    const groupAddressable = exportDocument.groups.reduce<Record<string, string>>((acc, group) => {
+      if (group.addressableKey) {
+        acc[group.id] = group.addressableKey
+      }
+      return acc
+    }, {})
 
     const layerOrder = [...exportDocument.layers].sort((a, b) => a.zIndex - b.zIndex)
     const glyphElements: string[] = []
@@ -29,7 +37,30 @@ export const svgExporter: Exporter = {
 
         const text = `<text x="${textX.toFixed(2)}" y="${textY.toFixed(2)}" fill="${textFill}" font-size="${CELL_SIZE * 0.74}" font-family="${FONT_FAMILY}" text-anchor="middle" dominant-baseline="middle">${escapeXml(glyph.char)}</text>`
 
-        glyphElements.push(`<g data-layer="${escapeXml(layer.id)}"${glyphGroups}>${text}</g>`)
+        const selectorTokens = glyph.groupIds
+          .map((groupId) => groupSelectors[groupId])
+          .filter((token): token is string => Boolean(token))
+        const addressableKeys = glyph.groupIds
+          .map((groupId) => groupAddressable[groupId])
+          .filter((key): key is string => Boolean(key))
+
+        const attributes: string[] = [`data-layer="${escapeXml(layer.id)}"`]
+
+        if (glyph.groupIds.length) {
+          attributes.push(`data-groups="${escapeXml(glyph.groupIds.join(','))}"`)
+        }
+
+        if (selectorTokens.length) {
+          attributes.push(`data-group-selectors="${escapeXml(selectorTokens.join(','))}"`)
+          const classNames = selectorTokens.map((token) => `group-${escapeXml(token)}`).join(' ')
+          attributes.push(`class="${classNames}"`)
+        }
+
+        if (addressableKeys.length) {
+          attributes.push(`data-group-addressable="${escapeXml(addressableKeys.join(','))}"`)
+        }
+
+        glyphElements.push(`<g ${attributes.join(' ')}>${text}</g>`)
       })
     })
 

@@ -18,6 +18,7 @@ import type {
   PaletteSwatch,
 } from '@shared/types/editor'
 import { BASE_UNIT_PX } from '@shared/constants/canvas'
+import { slugify } from '@shared/utils/slug'
 
 const DEFAULT_GLYPH = '▒'
 const MIN_VIEWPORT_SCALE = 0.25
@@ -29,6 +30,7 @@ const CURSOR_SCALE_STEP = 0.25
 const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boolean>>> = {
   classic: {
     layers: true,
+    groups: true,
     glyphLibrary: true,
     inspector: true,
     palette: true,
@@ -36,6 +38,7 @@ const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boo
   },
   reference: {
     layers: true,
+    groups: true,
     glyphLibrary: true,
     inspector: false,
     palette: true,
@@ -43,6 +46,7 @@ const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boo
   },
   animation: {
     layers: true,
+    groups: true,
     glyphLibrary: false,
     inspector: true,
     palette: true,
@@ -76,6 +80,126 @@ const generateId = (prefix: string): string => {
   }
 
   return `${sanitized}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const toCamelCase = (value: string): string => {
+  const segments = value
+    .split(/[-_\s]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+
+  if (!segments.length) {
+    return ''
+  }
+
+  return segments
+    .map((segment, index) => {
+      const lower = segment.toLowerCase()
+      if (index === 0) {
+        return lower
+      }
+      return lower.charAt(0).toUpperCase() + lower.slice(1)
+    })
+    .join('')
+}
+
+const deriveNextGroupName = (document: CanvasDocument, proposed?: string): string => {
+  const trimmed = proposed?.trim()
+  if (trimmed) {
+    return trimmed
+  }
+
+  const existingNames = new Set(document.groups.map((group) => group.name))
+  let index = 1
+  let candidate = `Group ${index}`
+  while (existingNames.has(candidate)) {
+    index += 1
+    candidate = `Group ${index}`
+  }
+  return candidate
+}
+
+const deriveGroupDefaults = (
+  document: CanvasDocument,
+  overrides?: { name?: string; addressableKey?: string },
+): { name: string; addressableKey?: string } => {
+  const name = deriveNextGroupName(document, overrides?.name)
+  const usedKeys = new Set(
+    document.groups
+      .map((group) => group.addressableKey?.trim())
+      .filter((key): key is string => Boolean(key)),
+  )
+
+  const providedKey = overrides?.addressableKey?.trim()
+  if (providedKey) {
+    let candidate = providedKey
+    let suffix = 2
+    while (usedKeys.has(candidate)) {
+      candidate = `${providedKey}${suffix}`
+      suffix += 1
+    }
+    return { name, addressableKey: candidate }
+  }
+
+  const slugBase = slugify(name, 'group')
+  const camelKey = toCamelCase(slugBase)
+  const baseKey = camelKey || 'group'
+  let candidate = baseKey
+  let suffix = 2
+  while (usedKeys.has(candidate)) {
+    candidate = `${baseKey}${suffix}`
+    suffix += 1
+  }
+  return { name, addressableKey: candidate }
+}
+
+const createGroupWithGlyphs = (
+  draft: EditorState,
+  glyphIds: SelectionState['glyphIds'],
+  overrides?: { name?: string; addressableKey?: string },
+): string | null => {
+  if (!glyphIds.length) {
+    return null
+  }
+
+  const glyphIdSet = new Set(glyphIds)
+  const { name, addressableKey } = deriveGroupDefaults(draft.document, overrides)
+  const group: GlyphGroup = {
+    id: generateId('group'),
+    name,
+    glyphIds: [...glyphIds],
+    tags: [],
+    addressableKey,
+  }
+
+  draft.document.groups.push(group)
+
+  for (const layer of draft.document.layers) {
+    for (const glyph of layer.glyphs) {
+      if (glyphIdSet.has(glyph.id) && !glyph.groupIds.includes(group.id)) {
+        glyph.groupIds.push(group.id)
+      }
+    }
+  }
+
+  return group.id
+}
+
+const resolveGlyphIdsFromSelection = (draft: EditorState): string[] => {
+  if (draft.selection.glyphIds.length) {
+    return [...draft.selection.glyphIds]
+  }
+
+  const derived = new Set<string>()
+  draft.selection.groupIds.forEach((groupId) => {
+    const group = draft.document.groups.find((entry) => entry.id === groupId)
+    if (!group) {
+      return
+    }
+    group.glyphIds.forEach((glyphId) => derived.add(glyphId))
+  })
+
+  return Array.from(derived)
 }
 
 const createBaseLayer = (): CanvasLayer => ({
@@ -320,6 +444,7 @@ const initialState: EditorState = {
     activePreset: 'classic',
     panels: {
       layers: { id: 'layers', visible: true, collapsed: false },
+      groups: { id: 'groups', visible: true, collapsed: false },
       glyphLibrary: { id: 'glyphLibrary', visible: true, collapsed: false },
       inspector: { id: 'inspector', visible: true, collapsed: false },
       palette: { id: 'palette', visible: true, collapsed: false },
@@ -375,14 +500,15 @@ export interface EditorStore extends EditorState {
   placeGlyph: (position: Vec2, options?: Partial<Pick<GlyphInstance, 'char' | 'paletteId' | 'swatchId'>>) => void
   updateGlyphPosition: (glyphId: string, position: Vec2) => void
   removeGlyph: (glyphId: string) => void
-  selectGlyphs: (glyphIds: SelectionState['glyphIds'], options?: { additive?: boolean }) => void
+  selectGlyphs: (glyphIds: SelectionState['glyphIds'], options?: { additive?: boolean; toggle?: boolean }) => void
   clearSelection: () => void
   setSelection: (selection: Partial<SelectionState>) => void
   addLayer: (name?: string) => void
   moveLayer: (layerId: string, direction: 'up' | 'down') => void
   renameLayer: (layerId: string, name: string) => void
   toggleLayerVisibility: (layerId: string) => void
-  createGroupFromSelection: (payload: { name: string; addressableKey?: string }) => void
+  createGroupFromSelection: (payload?: { name?: string; addressableKey?: string }) => void
+  toggleSelectionGrouping: (payload?: { name?: string; addressableKey?: string }) => void
   updateGroup: (groupId: string, updates: Partial<Omit<GlyphGroup, 'id' | 'glyphIds'>>) => void
   deleteGroup: (groupId: string) => void
   setDocumentName: (name: string) => void
@@ -436,6 +562,8 @@ export const useEditorStore = create<EditorStore>()(
             draft.layout.panels[panelId].collapsed = persisted.collapsed ?? false
           }
         })
+        draft.layout.panels.groups.visible = true
+        draft.layout.panels.groups.collapsed = false
         draft.layout.panels.palette.visible = true
         draft.layout.panels.hotkeys.visible = true
         draft.layout.panels.palette.collapsed = false
@@ -922,7 +1050,17 @@ export const useEditorStore = create<EditorStore>()(
       }),
     selectGlyphs: (glyphIds, options) =>
       set((draft) => {
-        if (options?.additive) {
+        if (options?.toggle) {
+          const toggled = new Set(draft.selection.glyphIds)
+          for (const glyphId of glyphIds) {
+            if (toggled.has(glyphId)) {
+              toggled.delete(glyphId)
+            } else {
+              toggled.add(glyphId)
+            }
+          }
+          draft.selection.glyphIds = Array.from(toggled)
+        } else if (options?.additive) {
           const next = new Set(draft.selection.glyphIds)
           for (const glyphId of glyphIds) {
             next.add(glyphId)
@@ -1005,30 +1143,63 @@ export const useEditorStore = create<EditorStore>()(
           draft.document.layers[index].visible = !draft.document.layers[index].visible
         }
       }),
-    createGroupFromSelection: ({ name, addressableKey }) =>
+    createGroupFromSelection: (overrides) =>
       set((draft) => {
-        if (!draft.selection.glyphIds.length) {
+        const glyphIds = resolveGlyphIdsFromSelection(draft)
+        if (!glyphIds.length) {
           return
         }
 
-        const group: GlyphGroup = {
-          id: generateId('group'),
-          name,
-          glyphIds: [...draft.selection.glyphIds],
-          tags: [],
-          addressableKey,
+        const groupId = createGroupWithGlyphs(draft, glyphIds, overrides)
+        if (!groupId) {
+          return
         }
 
-        draft.document.groups.push(group)
-        draft.selection.groupIds = [group.id]
+        draft.selection.glyphIds = glyphIds
+        draft.selection.groupIds = [groupId]
+      }),
+    toggleSelectionGrouping: (overrides) =>
+      set((draft) => {
+        const glyphIds = resolveGlyphIdsFromSelection(draft)
 
-        for (const layer of draft.document.layers) {
-          for (const glyph of layer.glyphs) {
-            if (group.glyphIds.includes(glyph.id) && !glyph.groupIds.includes(group.id)) {
-              glyph.groupIds.push(group.id)
-            }
-          }
+        if (!glyphIds.length) {
+          return
         }
+
+        const glyphIdSet = new Set(glyphIds)
+        const sharedGroups = draft.document.groups.filter((group) =>
+          glyphIds.every((glyphId) => group.glyphIds.includes(glyphId)),
+        )
+
+        if (sharedGroups.length) {
+          const sharedGroupIds = new Set(sharedGroups.map((group) => group.id))
+
+          draft.document.layers.forEach((layer) => {
+            layer.glyphs.forEach((glyph) => {
+              if (!glyphIdSet.has(glyph.id)) {
+                return
+              }
+              glyph.groupIds = glyph.groupIds.filter((groupId) => !sharedGroupIds.has(groupId))
+            })
+          })
+
+          sharedGroups.forEach((group) => {
+            group.glyphIds = group.glyphIds.filter((glyphId) => !glyphIdSet.has(glyphId))
+          })
+
+          draft.document.groups = draft.document.groups.filter((group) => group.glyphIds.length > 0)
+          draft.selection.glyphIds = glyphIds
+          draft.selection.groupIds = deriveGroupIdsForGlyphs(draft.document, glyphIds)
+          return
+        }
+
+        const groupId = createGroupWithGlyphs(draft, glyphIds, overrides)
+        if (!groupId) {
+          return
+        }
+
+        draft.selection.glyphIds = glyphIds
+        draft.selection.groupIds = [groupId]
       }),
     updateGroup: (groupId, updates) =>
       set((draft) => {

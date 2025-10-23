@@ -84,6 +84,10 @@ export const HOTKEY_SECTIONS: HotkeySection[] = [
         keys: ['Ctrl/Cmd + G'],
         description: 'Toggle grouping for current selection',
       },
+      {
+        keys: ['Alt + Arrow Up', 'Alt + Arrow Down'],
+        description: 'Move active layer up or down',
+      },
     ],
   },
 ]

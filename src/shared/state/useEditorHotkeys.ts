@@ -94,6 +94,21 @@ export function useEditorHotkeys() {
         ArrowRight: { x: 1, y: 0 },
       }
 
+      if (
+        event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      ) {
+        event.preventDefault()
+        const activeLayerId = state.activeLayerId
+        if (!activeLayerId) {
+          return
+        }
+        state.moveLayer(activeLayerId, event.key === 'ArrowUp' ? 'up' : 'down')
+        return
+      }
+
       const arrowDelta = arrowMap[event.key]
       if (arrowDelta && !event.metaKey && !event.ctrlKey && !event.altKey) {
         const hasSelection = state.selection.glyphIds.length > 0 || state.selection.groupIds.length > 0

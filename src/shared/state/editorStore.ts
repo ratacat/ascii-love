@@ -254,6 +254,37 @@ const deriveGroupDefaults = (
   return { name, addressableKey: candidate }
 }
 
+const deriveNextPaletteName = (
+  document: CanvasDocument,
+  proposed?: string,
+  excludeId?: string,
+): string => {
+  const existing = new Set(
+    document.palettes
+      .filter((palette) => !excludeId || palette.id !== excludeId)
+      .map((palette) => palette.name.trim().toLowerCase()),
+  )
+
+  const trimmed = proposed?.trim()
+  if (trimmed) {
+    let candidate = trimmed
+    let suffix = 2
+    while (existing.has(candidate.trim().toLowerCase())) {
+      candidate = `${trimmed} (${suffix})`
+      suffix += 1
+    }
+    return candidate
+  }
+
+  let index = document.palettes.length + 1
+  let candidate = `Palette ${index}`
+  while (existing.has(candidate.toLowerCase())) {
+    index += 1
+    candidate = `Palette ${index}`
+  }
+  return candidate
+}
+
 const createGroupWithGlyphs = (
   draft: EditorState,
   glyphIds: SelectionState['glyphIds'],
@@ -589,6 +620,9 @@ export interface EditorStore extends EditorState {
   setLayoutPreset: (preset: LayoutPreset) => void
   loadLayoutFromPersistence: (layout: LayoutState) => void
   loadPalettesFromPersistence: (palettes: Palette[]) => void
+  addPalette: (payload?: { name?: string; description?: string }) => void
+  renamePalette: (paletteId: string, name: string) => void
+  removePalette: (paletteId: string) => void
   setActiveLayer: (layerId: string) => void
   setActivePalette: (paletteId: string) => void
   setActiveSwatch: (swatchId?: string) => void
@@ -609,6 +643,11 @@ export interface EditorStore extends EditorState {
   addSwatch: (
     paletteId: string,
     swatch: Pick<PaletteSwatch, 'foreground'> & Partial<Pick<PaletteSwatch, 'name' | 'background' | 'accent'>>,
+  ) => void
+  moveSwatch: (
+    paletteId: string,
+    swatchId: string,
+    options?: { targetSwatchId?: string; position?: 'before' | 'after' },
   ) => void
   removeSwatch: (paletteId: string, swatchId: string) => void
   placeGlyph: (position: Vec2, options?: Partial<Pick<GlyphInstance, 'char' | 'paletteId' | 'swatchId'>>) => void
@@ -1015,6 +1054,90 @@ export const useEditorStore = create<EditorStore>()(
 
         syncActiveColor(draft)
       }),
+    addPalette: (payload) =>
+      set((draft) => {
+        const paletteName = deriveNextPaletteName(draft.document, payload?.name)
+        const paletteId = generateId('palette')
+        const baseColor = normalizeColor(draft.activeColor) ?? '#FFFFFF'
+        const swatch: PaletteSwatch = {
+          id: generateId('swatch'),
+          name: baseColor,
+          foreground: baseColor,
+          background: undefined,
+          accent: undefined,
+          locked: false,
+        }
+
+        const palette: Palette = {
+          id: paletteId,
+          name: paletteName,
+          swatches: [swatch],
+          locked: false,
+          mutable: true,
+          description: payload?.description,
+        }
+
+        draft.document.palettes.push(palette)
+        draft.activePaletteId = paletteId
+        draft.activeSwatchId = swatch.id
+        draft.activeColor = baseColor
+        syncActiveColor(draft)
+      }),
+    renamePalette: (paletteId, name) =>
+      set((draft) => {
+        const palette = getPaletteById(draft.document, paletteId)
+        if (!palette || palette.mutable === false) {
+          return
+        }
+        const trimmed = name?.trim()
+        if (!trimmed) {
+          return
+        }
+        const nextName = deriveNextPaletteName(draft.document, trimmed, paletteId)
+        palette.name = nextName
+      }),
+    removePalette: (paletteId) =>
+      set((draft) => {
+        const palettes = draft.document.palettes
+        if (palettes.length <= 1) {
+          return
+        }
+        const index = palettes.findIndex((palette) => palette.id === paletteId)
+        if (index === -1) {
+          return
+        }
+        const palette = palettes[index]
+        if (palette.mutable === false) {
+          return
+        }
+
+        palettes.splice(index, 1)
+        const fallback = palettes[0]
+
+        if (fallback) {
+          draft.document.layers.forEach((layer) => {
+            layer.glyphs.forEach((glyph) => {
+              if (glyph.paletteId !== paletteId) {
+                return
+              }
+              glyph.paletteId = fallback.id
+              if (
+                glyph.swatchId &&
+                !fallback.swatches.some((swatch) => swatch.id === glyph.swatchId)
+              ) {
+                glyph.swatchId = fallback.swatches[0]?.id
+              }
+            })
+          })
+        }
+
+        if (draft.activePaletteId === paletteId || !getPaletteById(draft.document, draft.activePaletteId)) {
+          draft.activePaletteId = fallback?.id
+          draft.activeSwatchId = getDefaultSwatchId(draft.document, draft.activePaletteId)
+        }
+
+        syncActiveColor(draft)
+      }),
     setActiveLayer: (layerId) =>
       set((draft) => {
         draft.activeLayerId = layerId
@@ -1287,6 +1410,52 @@ export const useEditorStore = create<EditorStore>()(
             draft.activeColor = color
           }
         }
+      }),
+    moveSwatch: (paletteId, swatchId, options) =>
+      set((draft) => {
+        const palette = getPaletteById(draft.document, paletteId)
+        if (!palette || palette.mutable === false) {
+          return
+        }
+
+        if (options?.targetSwatchId === swatchId) {
+          return
+        }
+
+        const index = palette.swatches.findIndex((item) => item.id === swatchId)
+        if (index === -1) {
+          return
+        }
+
+        if (palette.swatches.length <= 1) {
+          return
+        }
+
+        const [entry] = palette.swatches.splice(index, 1)
+        if (!entry) {
+          return
+        }
+
+        let targetIndex: number
+        if (options?.targetSwatchId) {
+          const target = palette.swatches.findIndex((item) => item.id === options.targetSwatchId)
+          if (target === -1) {
+            palette.swatches.splice(index, 0, entry)
+            return
+          }
+          targetIndex = options?.position === 'after' ? target + 1 : target
+        } else {
+          targetIndex = options?.position === 'after' ? palette.swatches.length : 0
+        }
+
+        if (targetIndex < 0) {
+          targetIndex = 0
+        }
+        if (targetIndex > palette.swatches.length) {
+          targetIndex = palette.swatches.length
+        }
+
+        palette.swatches.splice(targetIndex, 0, entry)
       }),
     addSwatch: (paletteId, swatch) =>
       set((draft) => {

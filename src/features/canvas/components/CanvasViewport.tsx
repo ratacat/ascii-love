@@ -499,6 +499,7 @@ const handlePointerMove = useCallback(
   )
   const activePalette = activePaletteId ? paletteMap.get(activePaletteId) : undefined
   const activeSwatch = activeSwatchId ? activePalette?.get(activeSwatchId) : undefined
+  const cursorZIndex = (activeLayer?.zIndex ?? -1) + 1
 
   return (
     <div className="canvas-viewport">
@@ -603,6 +604,7 @@ const handlePointerMove = useCallback(
                   left: Math.round((previewPoint.x + paddingUnits) * unitSize),
                   top: Math.round((previewPoint.y + paddingUnits) * unitSize),
                   color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
+                  zIndex: cursorZIndex,
                   transform: cursorPreviewTransform,
                   transformOrigin: '50% 50%',
                   width: unitSize,

@@ -134,6 +134,34 @@ describe('useEditorHotkeys', () => {
     expect(moved?.transform.translation.y ?? 0).toBeCloseTo(20 / 24)
   })
 
+  it('reorders layers with Alt + Arrow shortcuts', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    const initial = store.document.layers[0]
+    if (!initial) {
+      throw new Error('Expected base layer')
+    }
+
+    store.addLayer('Overlay')
+    const overlay = useEditorStore.getState().document.layers.find((layer) => layer.name === 'Overlay')
+    expect(overlay).toBeDefined()
+    if (!overlay) {
+      throw new Error('Expected overlay layer')
+    }
+
+    store.setActiveLayer(initial.id)
+    fireEvent.keyDown(window, { key: 'ArrowUp', code: 'ArrowUp', altKey: true })
+
+    let layers = useEditorStore.getState().document.layers
+    expect(layers[0]?.id).toBe(overlay.id)
+    expect(layers[1]?.id).toBe(initial.id)
+
+    fireEvent.keyDown(window, { key: 'ArrowDown', code: 'ArrowDown', altKey: true })
+    layers = useEditorStore.getState().document.layers
+    expect(layers[0]?.id).toBe(initial.id)
+    expect(layers[1]?.id).toBe(overlay.id)
+  })
+
   it('creates a new group for the current selection when pressing Cmd/Ctrl + G', async () => {
     render(<HotkeyHarness />)
     const store = useEditorStore.getState()

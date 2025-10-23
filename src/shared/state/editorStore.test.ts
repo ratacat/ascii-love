@@ -308,4 +308,95 @@ describe('editorStore', () => {
     expect(nextState.activeCanvasId).not.toBe(initialId)
     expect(nextState.hasUnsavedChanges).toBe(true)
   })
+
+  describe('palette management', () => {
+    it('adds a palette seeded with the active color and makes it active', () => {
+      const store = useEditorStore.getState()
+      store.setActiveColor('#123456')
+      store.addPalette({ name: 'Custom Palette' })
+
+      const state = useEditorStore.getState()
+      expect(state.document.palettes).toHaveLength(2)
+      const created = state.document.palettes.find((palette) => palette.name.startsWith('Custom'))
+      expect(created).toBeDefined()
+      expect(state.activePaletteId).toBe(created?.id)
+      expect(state.activeSwatchId).toBe(created?.swatches[0]?.id)
+      expect(created?.swatches[0]?.foreground).toBe('#123456')
+    })
+
+    it('renames palettes while avoiding duplicate names', () => {
+      const store = useEditorStore.getState()
+      store.addPalette({ name: 'Atmosphere' })
+      const palette = useEditorStore
+        .getState()
+        .document.palettes.find((entry) => entry.name.startsWith('Atmosphere'))
+      expect(palette).toBeDefined()
+      if (!palette) {
+        throw new Error('Expected palette to exist')
+      }
+
+      store.renamePalette(palette.id, 'Default Palette')
+      const renamed = useEditorStore
+        .getState()
+        .document.palettes.find((entry) => entry.id === palette.id)
+      expect(renamed?.name).toBe('Default Palette (2)')
+    })
+
+    it('removes palettes and reassociates glyphs to the fallback palette', () => {
+      const store = useEditorStore.getState()
+      store.addPalette({ name: 'Transient' })
+      const stateAfterAdd = useEditorStore.getState()
+      const fallback = stateAfterAdd.document.palettes[0]
+      const transient = stateAfterAdd.document.palettes[1]
+      expect(transient).toBeDefined()
+      if (!transient) {
+        throw new Error('Expected transient palette')
+      }
+
+      store.addSwatch(transient.id, { foreground: '#AAAAAA', name: 'Shadow' })
+      const latestTransient = useEditorStore
+        .getState()
+        .document.palettes.find((entry) => entry.id === transient.id)
+      const swatchId = latestTransient?.swatches[0]?.id
+      expect(swatchId).toBeDefined()
+      if (!swatchId) {
+        throw new Error('Expected swatch to exist')
+      }
+      store.placeGlyph({ x: 0, y: 0 }, { paletteId: transient.id, swatchId })
+
+      store.removePalette(transient.id)
+      const nextState = useEditorStore.getState()
+      expect(nextState.document.palettes).toHaveLength(1)
+      const glyph = nextState.document.layers[0]?.glyphs[0]
+      expect(glyph?.paletteId).toBe(fallback.id)
+      if (fallback.swatches.length) {
+        expect(glyph?.swatchId).toBe(fallback.swatches[0]?.id)
+      }
+    })
+
+    it('reorders swatches using moveSwatch', () => {
+      const store = useEditorStore.getState()
+      const palette = store.document.palettes[0]
+      expect(palette).toBeDefined()
+      if (!palette) {
+        throw new Error('Expected default palette')
+      }
+
+      store.addSwatch(palette.id, { foreground: '#0F0F0F', name: 'Deep Shadow' })
+      const stateAfterAdd = useEditorStore.getState()
+      const swatches = stateAfterAdd.document.palettes[0]?.swatches ?? []
+      expect(swatches.length).toBeGreaterThan(1)
+      const target = swatches[swatches.length - 1]
+      const destination = swatches[0]
+      expect(target).toBeDefined()
+      expect(destination).toBeDefined()
+      if (!target || !destination) {
+        throw new Error('Swatch setup failed')
+      }
+
+      store.moveSwatch(palette.id, target.id, { targetSwatchId: destination.id, position: 'before' })
+      const reordered = useEditorStore.getState().document.palettes[0]?.swatches ?? []
+      expect(reordered[0]?.id).toBe(target.id)
+    })
+  })
 })

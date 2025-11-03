@@ -29,6 +29,21 @@ export function useEditorHotkeys() {
 
       const state = useEditorStore.getState()
 
+      if (
+        event.altKey &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      ) {
+        event.preventDefault()
+        const activeLayerId = state.activeLayerId
+        if (!activeLayerId) {
+          return
+        }
+        state.moveLayer(activeLayerId, event.key === 'ArrowUp' ? 'up' : 'down')
+        return
+      }
+
       if ((event.metaKey || event.ctrlKey) && !event.altKey && key === 'g') {
         event.preventDefault()
         const hasSelection = state.selection.glyphIds.length > 0 || state.selection.groupIds.length > 0
@@ -92,21 +107,6 @@ export function useEditorHotkeys() {
         ArrowDown: { x: 0, y: 1 },
         ArrowLeft: { x: -1, y: 0 },
         ArrowRight: { x: 1, y: 0 },
-      }
-
-      if (
-        event.altKey &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        (event.key === 'ArrowUp' || event.key === 'ArrowDown')
-      ) {
-        event.preventDefault()
-        const activeLayerId = state.activeLayerId
-        if (!activeLayerId) {
-          return
-        }
-        state.moveLayer(activeLayerId, event.key === 'ArrowUp' ? 'up' : 'down')
-        return
       }
 
       const arrowDelta = arrowMap[event.key]

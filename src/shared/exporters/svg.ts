@@ -1,8 +1,20 @@
+import { BASE_UNIT_PX } from '@shared/constants/canvas'
+
 import type { Exporter } from './types'
 import { buildExportDocument, deriveExportFilename, escapeXml } from './utils'
 
-const CELL_SIZE = 18
+const CELL_SIZE = BASE_UNIT_PX
 const FONT_FAMILY = "'Fira Code', 'IBM Plex Mono', 'DM Mono', monospace"
+const FONT_SCALE = 0.85
+const BASELINE_OFFSET = 0
+
+const formatNumber = (value: number, fractionDigits = 2): string => {
+  const rounded = Number.parseFloat(value.toFixed(fractionDigits))
+  if (Number.isNaN(rounded)) {
+    return '0'
+  }
+  return Object.is(rounded, -0) ? '0' : rounded.toString()
+}
 
 export const svgExporter: Exporter = {
   id: 'svg',
@@ -27,15 +39,37 @@ export const svgExporter: Exporter = {
 
     layerOrder.forEach((layer) => {
       layer.glyphs.forEach((glyph) => {
-        const baseX = glyph.position.x * CELL_SIZE
-        const baseY = glyph.position.y * CELL_SIZE
+        const transformTranslation = glyph.transform?.translation ?? { x: 0, y: 0 }
+        const transformScale = glyph.transform?.scale ?? { x: 1, y: 1 }
+        const transformRotation = glyph.transform?.rotation ?? 0
+        const translateX =
+          (glyph.position.x + 0.5) * CELL_SIZE + transformTranslation.x * CELL_SIZE
+        const translateY =
+          (glyph.position.y + 0.5) * CELL_SIZE + transformTranslation.y * CELL_SIZE + BASELINE_OFFSET
+        const scaleX = transformScale.x ?? 1
+        const scaleY = transformScale.y ?? 1
 
-        const textX = baseX + CELL_SIZE / 2
-        const textY = baseY + CELL_SIZE / 2 + 0.5
-        const glyphGroups = glyph.groupIds.length ? ` data-groups="${escapeXml(glyph.groupIds.join(','))}"` : ''
         const textFill = glyph.foreground ?? '#FFFFFF'
 
-        const text = `<text x="${textX.toFixed(2)}" y="${textY.toFixed(2)}" fill="${textFill}" font-size="${CELL_SIZE * 0.74}" font-family="${FONT_FAMILY}" text-anchor="middle" dominant-baseline="middle">${escapeXml(glyph.char)}</text>`
+        const transforms: string[] = [
+          `translate(${formatNumber(translateX)} ${formatNumber(translateY)})`,
+        ]
+
+        if (transformRotation) {
+          transforms.push(`rotate(${formatNumber(transformRotation)})`)
+        }
+
+        if (scaleX !== 1 || scaleY !== 1) {
+          transforms.push(
+            `scale(${formatNumber(scaleX, 3)} ${formatNumber(scaleY, 3)})`,
+          )
+        }
+
+        const text = `<text x="0" y="0" fill="${textFill}" font-size="${formatNumber(
+          CELL_SIZE * FONT_SCALE,
+        )}" font-family="${FONT_FAMILY}" text-anchor="middle" dominant-baseline="middle">${escapeXml(
+          glyph.char,
+        )}</text>`
 
         const selectorTokens = glyph.groupIds
           .map((groupId) => groupSelectors[groupId])
@@ -59,6 +93,8 @@ export const svgExporter: Exporter = {
         if (addressableKeys.length) {
           attributes.push(`data-group-addressable="${escapeXml(addressableKeys.join(','))}"`)
         }
+
+        attributes.push(`transform="${transforms.join(' ')}"`)
 
         glyphElements.push(`<g ${attributes.join(' ')}>${text}</g>`)
       })

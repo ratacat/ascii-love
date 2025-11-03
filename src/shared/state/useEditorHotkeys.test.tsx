@@ -162,6 +162,54 @@ describe('useEditorHotkeys', () => {
     expect(layers[1]?.id).toBe(overlay.id)
   })
 
+  it('reorders layers with Alt + Arrow even when focus is on an input', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    const baseLayer = store.document.layers[0]
+    if (!baseLayer) {
+      throw new Error('Expected base layer')
+    }
+
+    store.addLayer('Overlay')
+    const overlay = useEditorStore
+      .getState()
+      .document.layers.find((layer) => layer.id !== baseLayer.id)
+    if (!overlay) {
+      throw new Error('Expected overlay layer')
+    }
+
+    store.setActiveLayer(baseLayer.id)
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    fireEvent.keyDown(input, { key: 'ArrowUp', code: 'ArrowUp', altKey: true })
+
+    const layers = useEditorStore.getState().document.layers
+    expect(layers[0]?.id).toBe(overlay.id)
+    expect(layers[1]?.id).toBe(baseLayer.id)
+
+    input.remove()
+  })
+
+  it('toggles snap-to-grid with Shift+S and persists preference', () => {
+    render(<HotkeyHarness />)
+    const store = useEditorStore.getState()
+    expect(store.cursor.snapped).toBe(false)
+    expect(store.preferences.snapToGridEnabled).toBe(false)
+
+    fireEvent.keyDown(window, { key: 'S', code: 'KeyS', shiftKey: true })
+
+    expect(useEditorStore.getState().cursor.snapped).toBe(true)
+    expect(useEditorStore.getState().preferences.snapToGridEnabled).toBe(true)
+
+    fireEvent.keyDown(window, { key: 'S', code: 'KeyS', shiftKey: true })
+
+    expect(useEditorStore.getState().cursor.snapped).toBe(false)
+    expect(useEditorStore.getState().preferences.snapToGridEnabled).toBe(false)
+  })
+
   it('creates a new group for the current selection when pressing Cmd/Ctrl + G', async () => {
     render(<HotkeyHarness />)
     const store = useEditorStore.getState()

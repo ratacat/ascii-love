@@ -12,6 +12,9 @@ const STORAGE_VERSION = 2
 const CANVAS_STORAGE_KEY = 'ascii-asset-studio/canvas-library.json'
 const CANVAS_STORAGE_VERSION = 1
 
+const MIN_SNAP_INTERVAL_PX = 1
+const MAX_SNAP_INTERVAL_PX = 512
+
 const DEFAULT_PANEL_VISIBILITY: Record<PanelId, boolean> = {
   layers: true,
   groups: true,
@@ -25,6 +28,16 @@ const DEFAULT_PREFERENCES: EditorPreferences = {
   showGrid: false,
   showCrosshair: true,
   autoGroupSelection: true,
+  snapToGridEnabled: false,
+  snapToGridIntervalPx: 1,
+}
+
+const normalizeSnapIntervalPx = (value: unknown): number => {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return DEFAULT_PREFERENCES.snapToGridIntervalPx
+  }
+  const rounded = Math.round(value)
+  return Math.min(MAX_SNAP_INTERVAL_PX, Math.max(MIN_SNAP_INTERVAL_PX, rounded))
 }
 
 const createEmptyLayout = (): LayoutState => ({
@@ -208,6 +221,12 @@ const coercePreferences = (value: unknown): EditorPreferences => {
   }
   if (typeof payload.autoGroupSelection === 'boolean') {
     base.autoGroupSelection = payload.autoGroupSelection
+  }
+  if (typeof payload.snapToGridEnabled === 'boolean') {
+    base.snapToGridEnabled = payload.snapToGridEnabled
+  }
+  if (payload.snapToGridIntervalPx !== undefined) {
+    base.snapToGridIntervalPx = normalizeSnapIntervalPx(payload.snapToGridIntervalPx)
   }
 
   return base

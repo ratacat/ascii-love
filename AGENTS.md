@@ -10,11 +10,9 @@ Or read the gh cli docs at `slurps\github-cli_docs.md`
 
 ### Habits to follow
 - When a user says “X is broken,” start with the experience: reproduce the exact flow they describe, observe the UI,
-    and only then jump into theories. If I truly can’t repro, I’ll still trace the full path (event → handler → store → render) before deciding it “works on my machine.”
-- Keep a quick checklist before tunneling in: 1) Is focus somewhere unexpected? 2) Are we in the right mode/state? 3)
-    Did a recent change alter lifecycle or layout? Walking that list would have surfaced the header-focus trap early.
-- Note the user’s diagnosis right in the plan, so “hotkeys don’t fire” stays front-of-mind while I investigate
-    related areas (DOM focus, event listeners, mode checks) instead of assuming it must be the reducer.
+    and only then jump into theories. If I truly can’t repro, I’ll still trace the full path (event → handler → store → render)
+- Keep focus off interactive controls once the interaction’s done—return it to the canvas viewport surface (or just
+  rely on the default document body) so useEditorHotkeys can keep catching key events.
 - Reflections after the user tells you that we completed a fix, solved a bug, got it working, etc..  
   - What did the user see? 
   - What actually caused it? 

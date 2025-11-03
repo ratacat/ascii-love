@@ -8,6 +8,82 @@ import { ExportMenu } from '@features/export/components/ExportMenu'
 import type { GlyphInstance, PaletteSwatch, Vec2 } from '@shared/types/editor'
 import { BASE_UNIT_PX } from '@shared/constants/canvas'
 
+const HITBOX_INSET_X = 0.16
+const HITBOX_INSET_Y = 0.18
+const DOUBLE_CLICK_THRESHOLD_MS = 250
+const DOUBLE_CLICK_DRIFT_UNITS = 0.1
+
+type GlyphHitBox = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  width: number
+  height: number
+  centerX: number
+  centerY: number
+}
+
+function computeGlyphHitBox(glyph: GlyphInstance): GlyphHitBox {
+  const translationX = glyph.transform?.translation?.x ?? 0
+  const translationY = glyph.transform?.translation?.y ?? 0
+  const scaleX = glyph.transform?.scale?.x ?? 1
+  const scaleY = glyph.transform?.scale?.y ?? 1
+  const rotationDeg = glyph.transform?.rotation ?? 0
+
+  const rotationRad = (rotationDeg * Math.PI) / 180
+  const cos = Math.cos(rotationRad)
+  const sin = Math.sin(rotationRad)
+
+  const centerX = glyph.position.x + 0.5 + translationX
+  const centerY = glyph.position.y + 0.5 + translationY
+
+  const halfWidth = Math.max(0.05, 0.5 - HITBOX_INSET_X)
+  const halfHeight = Math.max(0.05, 0.5 - HITBOX_INSET_Y)
+
+  const corners: Array<{ x: number; y: number }> = [
+    { x: -halfWidth, y: -halfHeight },
+    { x: halfWidth, y: -halfHeight },
+    { x: halfWidth, y: halfHeight },
+    { x: -halfWidth, y: halfHeight },
+  ]
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const corner of corners) {
+    const scaledX = corner.x * scaleX
+    const scaledY = corner.y * scaleY
+
+    const rotatedX = scaledX * cos - scaledY * sin
+    const rotatedY = scaledX * sin + scaledY * cos
+
+    const docX = rotatedX + centerX
+    const docY = rotatedY + centerY
+
+    minX = Math.min(minX, docX)
+    minY = Math.min(minY, docY)
+    maxX = Math.max(maxX, docX)
+    maxY = Math.max(maxY, docY)
+  }
+
+  const width = Math.max(0.05, maxX - minX)
+  const height = Math.max(0.05, maxY - minY)
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width,
+    height,
+    centerX,
+    centerY,
+  }
+}
+
 export function CanvasViewport() {
   const document = useEditorStore((state) => state.document)
   const cursor = useEditorStore((state) => state.cursor)
@@ -34,6 +110,7 @@ export function CanvasViewport() {
   } | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const marqueeBaseSelectionRef = useRef<string[]>([])
+  const lastGlyphClickRef = useRef<{ point: Vec2; time: number; glyphId: string } | null>(null)
 
   const releaseEditingFocus = useCallback(() => {
     const active = document.activeElement
@@ -72,16 +149,48 @@ export function CanvasViewport() {
   const glyphEntries = useMemo(() => {
     const entries: Array<{
       glyph: GlyphInstance
-      layerZ: number
+      layerOrder: number
     }> = []
-    visibleLayers.forEach((layer) => {
+    visibleLayers.forEach((layer, orderIndex) => {
       layer.glyphs.forEach((glyph) => {
-        entries.push({ glyph, layerZ: layer.zIndex })
+        entries.push({ glyph, layerOrder: orderIndex })
       })
     })
-    entries.sort((a, b) => a.layerZ - b.layerZ)
+    entries.sort((a, b) => a.layerOrder - b.layerOrder)
     return entries
   }, [visibleLayers])
+
+  const glyphHitBoxes = useMemo(() => {
+    const map = new Map<string, GlyphHitBox>()
+    glyphEntries.forEach(({ glyph }) => {
+      map.set(glyph.id, computeGlyphHitBox(glyph))
+    })
+    return map
+  }, [glyphEntries])
+
+  const getOverlappingGlyphs = useCallback(
+    (point: Vec2) =>
+      glyphEntries
+        .map((entry) => entry.glyph)
+        .filter((glyph) => {
+          const bounds = glyphHitBoxes.get(glyph.id)
+          if (!bounds) {
+            return false
+          }
+          return point.x >= bounds.minX && point.x <= bounds.maxX && point.y >= bounds.minY && point.y <= bounds.maxY
+        }),
+    [glyphEntries, glyphHitBoxes],
+  )
+
+  const showHitboxDebug = useMemo(() => {
+    if (!import.meta.env.DEV) {
+      return false
+    }
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return Boolean((window as typeof window & { __ASCII_LOVE_DEBUG_HITBOXES__?: boolean }).__ASCII_LOVE_DEBUG_HITBOXES__)
+  }, [])
 
   const pointerToDocumentPosition = useCallback(
     (event: { clientX: number; clientY: number }): Vec2 | null => {
@@ -107,15 +216,24 @@ export function CanvasViewport() {
         return position
       }
 
-      const snappedX = Math.round(position.x)
-      const snappedY = Math.round(position.y)
+      const intervalUnits = cursor.snapIntervalPx / unitSize
+      if (!Number.isFinite(intervalUnits) || intervalUnits <= 0) {
+        const fallbackX = Math.round(position.x)
+        const fallbackY = Math.round(position.y)
+        return { x: fallbackX, y: fallbackY }
+      }
+
+      const snapComponent = (value: number) => {
+        const snapped = Math.round(value / intervalUnits) * intervalUnits
+        return Math.round(snapped * 1e4) / 1e4
+      }
 
       return {
-        x: snappedX,
-        y: snappedY,
+        x: snapComponent(position.x),
+        y: snapComponent(position.y),
       }
     },
-    [cursor.snapped],
+    [cursor.snapIntervalPx, cursor.snapped, unitSize],
   )
 
   const handleStageInteraction = useCallback(
@@ -172,12 +290,15 @@ export function CanvasViewport() {
       event.stopPropagation()
       releaseEditingFocus()
 
+      const docPoint = pointerToDocumentPosition(event)
+      const now = performance.now()
+
       if (cursor.mode === 'place') {
-        const position = pointerToDocumentPosition(event)
-        if (!position) {
+        if (!docPoint) {
           return
         }
-        placeGlyph(applySnapping(position))
+        placeGlyph(applySnapping(docPoint))
+        lastGlyphClickRef.current = null
         return
       }
 
@@ -185,11 +306,48 @@ export function CanvasViewport() {
         if (event.shiftKey) {
           selectGlyphs([glyph.id], { toggle: true })
         } else {
-          selectGlyphs([glyph.id])
+          let cycledGlyphId: string | null = null
+
+          if (docPoint && lastGlyphClickRef.current) {
+            const withinTime = now - lastGlyphClickRef.current.time < DOUBLE_CLICK_THRESHOLD_MS
+            const withinDistance =
+              Math.abs(lastGlyphClickRef.current.point.x - docPoint.x) <= DOUBLE_CLICK_DRIFT_UNITS &&
+              Math.abs(lastGlyphClickRef.current.point.y - docPoint.y) <= DOUBLE_CLICK_DRIFT_UNITS
+
+            if (withinTime && withinDistance) {
+              const overlapping = getOverlappingGlyphs(docPoint)
+              if (overlapping.length > 1) {
+                const referenceId = lastGlyphClickRef.current.glyphId ?? glyph.id
+                const currentIndex = overlapping.findIndex((item) => item.id === referenceId)
+                const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % overlapping.length
+                const nextGlyph = overlapping[nextIndex]
+                if (nextGlyph) {
+                  selectGlyphs([nextGlyph.id])
+                  cycledGlyphId = nextGlyph.id
+                }
+              }
+            }
+          }
+
+          if (!cycledGlyphId) {
+            selectGlyphs([glyph.id])
+            cycledGlyphId = glyph.id
+          }
+
+          if (docPoint) {
+            lastGlyphClickRef.current = { point: docPoint, time: now, glyphId: cycledGlyphId }
+          }
+          return
         }
       }
+
+      if (docPoint) {
+        lastGlyphClickRef.current = { point: docPoint, time: now, glyphId: glyph.id }
+      } else {
+        lastGlyphClickRef.current = null
+      }
     },
-    [applySnapping, cursor.mode, placeGlyph, pointerToDocumentPosition, releaseEditingFocus, selectGlyphs],
+    [applySnapping, cursor.mode, getOverlappingGlyphs, placeGlyph, pointerToDocumentPosition, releaseEditingFocus, selectGlyphs],
   )
 
   const handleStageMouseDown = useCallback(
@@ -431,47 +589,43 @@ const handlePointerMove = useCallback(
   )
 
   const renderGlyph = useCallback(
-    (entry: { glyph: GlyphInstance; layerZ: number }) => {
-      const { glyph, layerZ } = entry
+    (glyph: GlyphInstance, layerOrder: number) => {
+      const layerZBase = layerOrder * 2 + 1
       const isSelected = selection.glyphIds.includes(glyph.id)
       const palette = paletteMap.get(glyph.paletteId)
       const swatch = glyph.swatchId ? palette?.get(glyph.swatchId) : undefined
       const foreground = glyph.foreground ?? swatch?.foreground ?? 'rgba(255, 255, 255, 0.9)'
 
+      const hitBox = glyphHitBoxes.get(glyph.id) ?? computeGlyphHitBox(glyph)
+
       const style: CSSProperties = {
-        left: Math.round((glyph.position.x + paddingUnits) * unitSize),
-        top: Math.round((glyph.position.y + paddingUnits) * unitSize),
-        zIndex: layerZ + 1,
+        left: Math.round((hitBox.minX + paddingUnits) * unitSize),
+        top: Math.round((hitBox.minY + paddingUnits) * unitSize),
+        width: Math.max(1, Math.round(hitBox.width * unitSize)),
+        height: Math.max(1, Math.round(hitBox.height * unitSize)),
+        zIndex: layerZBase,
         color: foreground,
-        width: unitSize,
-        height: unitSize,
         fontSize: `${unitSize * 0.85}px`,
       }
-      const transformParts: string[] = []
-      const translation = glyph.transform?.translation
+
+      const glyphTransformParts: string[] = []
       const scale = glyph.transform?.scale
       const rotation = glyph.transform?.rotation ?? 0
 
-      if (translation && (translation.x !== 0 || translation.y !== 0)) {
-        transformParts.push(
-          `translate(${translation.x * unitSize}px, ${translation.y * unitSize}px)`,
-        )
-      }
-
       if (rotation) {
-        transformParts.push(`rotate(${rotation}deg)`)
+        glyphTransformParts.push(`rotate(${rotation}deg)`)
       }
 
       const scaleX = scale?.x ?? 1
       const scaleY = scale?.y ?? 1
       if (scaleX !== 1 || scaleY !== 1) {
-        transformParts.push(`scale(${scaleX}, ${scaleY})`)
+        glyphTransformParts.push(`scale(${scaleX}, ${scaleY})`)
       }
 
-      if (transformParts.length) {
-        style.transform = transformParts.join(' ')
+      const glyphStyle: CSSProperties = {
+        transform: glyphTransformParts.join(' ') || undefined,
+        transformOrigin: '50% 50%',
       }
-      style.transformOrigin = '50% 50%'
 
       return (
         <button
@@ -489,17 +643,34 @@ const handlePointerMove = useCallback(
           onClick={(event) => handleGlyphInteraction(glyph, event)}
           style={style}
         >
-          <span className="canvas-viewport__glyph" aria-hidden>
+          <span className="canvas-viewport__glyph" aria-hidden style={glyphStyle}>
             {glyph.char}
           </span>
         </button>
       )
     },
-    [handleGlyphInteraction, paddingUnits, paletteMap, selection.glyphIds, unitSize],
+    [glyphHitBoxes, handleGlyphInteraction, paddingUnits, paletteMap, selection.glyphIds, unitSize],
+  )
+  const renderEntries = useMemo(
+    () =>
+      visibleLayers.reduce<
+        Array<
+          | { kind: 'glyph'; glyph: GlyphInstance; layerOrder: number }
+          | { kind: 'preview'; layerOrder: number; layerId: string }
+        >
+      >((entries, layer, orderIndex) => {
+        layer.glyphs.forEach((glyph) => {
+          entries.push({ kind: 'glyph', glyph, layerOrder: orderIndex })
+        })
+        if (layer.id === activeLayerId && previewPoint && activeGlyphChar) {
+          entries.push({ kind: 'preview', layerOrder: orderIndex, layerId: layer.id })
+        }
+        return entries
+      }, []),
+    [activeGlyphChar, activeLayerId, previewPoint, visibleLayers],
   )
   const activePalette = activePaletteId ? paletteMap.get(activePaletteId) : undefined
   const activeSwatch = activeSwatchId ? activePalette?.get(activeSwatchId) : undefined
-  const cursorZIndex = (activeLayer?.zIndex ?? -1) + 1
 
   return (
     <div className="canvas-viewport">
@@ -566,6 +737,26 @@ const handlePointerMove = useCallback(
                 }}
               />
             ) : null}
+            {showHitboxDebug
+              ? glyphEntries.map(({ glyph }) => {
+                  const hitBox = glyphHitBoxes.get(glyph.id)
+                  if (!hitBox) {
+                    return null
+                  }
+                  return (
+                    <div
+                      key={`hitbox-${glyph.id}`}
+                      className="canvas-viewport__glyph-hitbox-debug"
+                      style={{
+                        left: Math.round((hitBox.minX + paddingUnits) * unitSize),
+                        top: Math.round((hitBox.minY + paddingUnits) * unitSize),
+                        width: Math.max(1, Math.round(hitBox.width * unitSize)),
+                        height: Math.max(1, Math.round(hitBox.height * unitSize)),
+                      }}
+                    />
+                  )
+                })
+              : null}
             {crosshairBounds ? (
               <div className="canvas-viewport__crosshair" aria-hidden>
                 <div
@@ -596,25 +787,37 @@ const handlePointerMove = useCallback(
                 />
               </div>
             ) : null}
-            {glyphEntries.map(renderGlyph)}
-            {previewPoint && activeGlyphChar ? (
-              <div
-                className="canvas-viewport__cursor-preview"
-                style={{
-                  left: Math.round((previewPoint.x + paddingUnits) * unitSize),
-                  top: Math.round((previewPoint.y + paddingUnits) * unitSize),
-                  color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
-                  zIndex: cursorZIndex,
-                  transform: cursorPreviewTransform,
-                  transformOrigin: '50% 50%',
-                  width: unitSize,
-                  height: unitSize,
-                  fontSize: `${unitSize * 0.85}px`,
-                }}
-              >
-                {activeGlyphChar}
-              </div>
-            ) : null}
+            {renderEntries.map((entry) => {
+              if (entry.kind === 'glyph') {
+                return renderGlyph(entry.glyph, entry.layerOrder)
+              }
+
+              if (!previewPoint || !activeGlyphChar) {
+                return null
+              }
+
+              const layerZBase = entry.layerOrder * 2 + 1
+
+              return (
+                <div
+                  key={`cursor-preview-${entry.layerId}`}
+                  className="canvas-viewport__cursor-preview"
+                  style={{
+                    left: Math.round((previewPoint.x + paddingUnits) * unitSize),
+                    top: Math.round((previewPoint.y + paddingUnits) * unitSize),
+                    color: activeSwatch?.foreground ?? 'rgba(255, 255, 255, 0.6)',
+                    zIndex: layerZBase + 1,
+                    transform: cursorPreviewTransform,
+                    transformOrigin: '50% 50%',
+                    width: unitSize,
+                    height: unitSize,
+                    fontSize: `${unitSize * 0.85}px`,
+                  }}
+                >
+                  {activeGlyphChar}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

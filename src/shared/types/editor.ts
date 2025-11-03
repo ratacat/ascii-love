@@ -108,6 +108,7 @@ export interface LayoutState {
 export interface CursorState {
   mode: CursorMode
   snapped: boolean
+  snapIntervalPx: number
   gridEnabled: boolean
   crosshairEnabled: boolean
   rotation: number
@@ -118,6 +119,8 @@ export interface EditorPreferences {
   showGrid: boolean
   showCrosshair: boolean
   autoGroupSelection: boolean
+  snapToGridEnabled: boolean
+  snapToGridIntervalPx: number
 }
 
 export interface ViewportState {

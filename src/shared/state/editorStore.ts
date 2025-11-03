@@ -28,6 +28,9 @@ const CURSOR_SCALE_MIN = 0.25
 const CURSOR_SCALE_MAX = 5
 const CURSOR_SCALE_STEP = 0.25
 
+const MIN_SNAP_INTERVAL_PX = 1
+const MAX_SNAP_INTERVAL_PX = 512
+
 const LAYOUT_PRESET_VISIBILITY: Record<LayoutPreset, Partial<Record<PanelId, boolean>>> = {
   classic: {
     layers: true,
@@ -72,6 +75,14 @@ const snapCursorScale = (scale: number): number =>
 const normalizeCursorScale = (scale: number): number => {
   const snapped = snapCursorScale(clampCursorScale(scale))
   return Math.round(snapped * 100) / 100
+}
+
+const normalizeSnapIntervalPx = (value: number | undefined): number => {
+  if (!Number.isFinite(value ?? NaN)) {
+    return MIN_SNAP_INTERVAL_PX
+  }
+  const clamped = Math.min(MAX_SNAP_INTERVAL_PX, Math.max(MIN_SNAP_INTERVAL_PX, Math.round(value as number)))
+  return clamped
 }
 
 const cloneDocument = (document: CanvasDocument): CanvasDocument => {
@@ -571,6 +582,7 @@ const initialState: EditorState = {
   cursor: {
     mode: 'select',
     snapped: false,
+    snapIntervalPx: MIN_SNAP_INTERVAL_PX,
     gridEnabled: false,
     crosshairEnabled: true,
     rotation: 0,
@@ -596,6 +608,8 @@ const initialState: EditorState = {
     showGrid: false,
     showCrosshair: true,
     autoGroupSelection: true,
+    snapToGridEnabled: false,
+    snapToGridIntervalPx: MIN_SNAP_INTERVAL_PX,
   },
   viewport: {
     offset: { x: 0, y: 0 },
@@ -637,6 +651,8 @@ export interface EditorStore extends EditorState {
   nudgeCursorScale: (steps: number) => void
   toggleGrid: () => void
   toggleSnapping: () => void
+  setSnapToGrid: (enabled: boolean) => void
+  setSnapToGridIntervalPx: (intervalPx: number) => void
   setActiveColor: (color: string) => void
   applyColorToSelection: (color: string) => void
   updateSwatch: (paletteId: string, swatchId: string, updates: Partial<Omit<PaletteSwatch, 'id'>>) => void
@@ -725,6 +741,8 @@ const loadDocumentIntoEditor = (
 
   draft.cursor.gridEnabled = draft.preferences.showGrid
   draft.cursor.crosshairEnabled = draft.preferences.showCrosshair
+  draft.cursor.snapped = draft.preferences.snapToGridEnabled
+  draft.cursor.snapIntervalPx = draft.preferences.snapToGridIntervalPx
 
   syncActiveColor(draft)
   recalcSelectionMeta(draft)
@@ -1209,9 +1227,26 @@ export const useEditorStore = create<EditorStore>()(
       }),
     setPreferences: (preferences) =>
       set((draft) => {
-        draft.preferences = { ...draft.preferences, ...preferences }
+        const nextEnabled =
+          typeof preferences.snapToGridEnabled === 'boolean'
+            ? preferences.snapToGridEnabled
+            : draft.preferences.snapToGridEnabled
+        const nextInterval =
+          preferences.snapToGridIntervalPx !== undefined
+            ? normalizeSnapIntervalPx(preferences.snapToGridIntervalPx)
+            : draft.preferences.snapToGridIntervalPx
+
+        draft.preferences = {
+          ...draft.preferences,
+          ...preferences,
+          snapToGridEnabled: nextEnabled,
+          snapToGridIntervalPx: nextInterval,
+        }
+
         draft.cursor.gridEnabled = draft.preferences.showGrid
         draft.cursor.crosshairEnabled = draft.preferences.showCrosshair
+        draft.cursor.snapped = nextEnabled
+        draft.cursor.snapIntervalPx = nextInterval
       }),
     panViewport: (delta) =>
       set((draft) => {
@@ -1365,7 +1400,20 @@ export const useEditorStore = create<EditorStore>()(
       }),
     toggleSnapping: () =>
       set((draft) => {
-        draft.cursor.snapped = !draft.cursor.snapped
+        const next = !draft.cursor.snapped
+        draft.cursor.snapped = next
+        draft.preferences.snapToGridEnabled = next
+      }),
+    setSnapToGrid: (enabled) =>
+      set((draft) => {
+        draft.cursor.snapped = enabled
+        draft.preferences.snapToGridEnabled = enabled
+      }),
+    setSnapToGridIntervalPx: (intervalPx) =>
+      set((draft) => {
+        const normalized = normalizeSnapIntervalPx(intervalPx)
+        draft.cursor.snapIntervalPx = normalized
+        draft.preferences.snapToGridIntervalPx = normalized
       }),
     updateSwatch: (paletteId, swatchId, updates) =>
       set((draft) => {

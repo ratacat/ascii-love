@@ -218,7 +218,7 @@ describe('layout persistence serialization', () => {
 
   it('parses legacy TOML format without palette data', () => {
     const legacy = [
-      '# ASCII Asset Studio layout + preference snapshot',
+      '# ASCII Love layout + preference snapshot',
       'activePreset = "reference"',
       '',
       '[panels]',

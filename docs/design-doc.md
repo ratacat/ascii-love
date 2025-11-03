@@ -1,4 +1,4 @@
-# ASCII Asset Studio — Working PRD
+# ASCII Love — Working PRD
 
 ## Problem Statement
 Create a browser-based tool that produces expressive ASCII (“assy”) art assets suitable for a React text-adventure game, spanning portraits, environmental illustrations, and fully composed UI screens.

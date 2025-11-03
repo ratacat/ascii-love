@@ -129,7 +129,7 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar__brand">
-        <span className="toolbar__product">ASCII Asset Studio</span>
+        <span className="toolbar__product">ASCII Love</span>
       </div>
     </header>
   )

@@ -1,6 +1,6 @@
 # ascii-love
 
-A freeform ASCII editor built with Vite + React. The project started from the ASCII Asset Studio scaffold and is evolving toward a layered, palette-aware canvas that supports free placement of glyphs, quick color swatching, and exporter tooling.
+A freeform ASCII editor built with Vite + React. ASCII Love is evolving toward a layered, palette-aware canvas that supports free placement of glyphs, quick color swatching, and exporter tooling.
 
 ## Getting Started
 
@@ -41,4 +41,4 @@ src/
 3. Wire undo/redo history across canvas and palette operations.
 4. Introduce collaborative and multi-document workflows.
 
-See `docs/design-doc.md` for the original ASCII Asset Studio vision and broader product direction.
+See `docs/design-doc.md` for the ASCII Love vision and broader product direction.

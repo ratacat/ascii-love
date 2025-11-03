@@ -8,6 +8,7 @@ import {
   type CanvasLibraryEntry,
   useEditorStore,
 } from '@shared/state/editorStore'
+import { showConfirmDialog } from '@shared/state/dialogStore'
 
 const formatUpdatedAt = (value?: string): string => {
   if (!value) {
@@ -159,9 +160,15 @@ export function DocumentControls() {
     setIsEditingTitle(false)
   }
 
-  const handleDeleteCanvas = (entry: CanvasLibraryEntry) => {
+  const handleDeleteCanvas = async (entry: CanvasLibraryEntry) => {
     const message = `Delete "${nameOrFallback(entry)}"?`
-    if (!window.confirm(message)) {
+    const confirmed = await showConfirmDialog({
+      title: 'Delete Canvas',
+      message,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep canvas',
+    })
+    if (!confirmed) {
       return
     }
     if (entry.id === activeCanvasId) {
@@ -244,7 +251,9 @@ export function DocumentControls() {
                     <button
                       type="button"
                       className="toolbar__selector-delete"
-                      onClick={() => handleDeleteCanvas(entry)}
+                      onClick={() => {
+                        void handleDeleteCanvas(entry)
+                      }}
                       aria-label={`Delete ${nameOrFallback(entry)}`}
                     >
                       ×

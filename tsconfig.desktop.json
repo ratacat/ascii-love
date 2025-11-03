@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "types": ["node", "electron"],
+    "noEmit": true,
+    "baseUrl": "."
+  },
+  "include": ["electron/**/*.ts"],
+  "exclude": ["node_modules"]
+}

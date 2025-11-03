@@ -3,6 +3,7 @@ import './LayersPanel.css'
 import { useMemo } from 'react'
 
 import { useEditorStore } from '@shared/state/editorStore'
+import { showPromptDialog } from '@shared/state/dialogStore'
 
 export function LayersPanel() {
   const layers = useEditorStore((state) => state.document.layers)
@@ -33,10 +34,22 @@ export function LayersPanel() {
                   .join(' ')}
                 onClick={() => setActiveLayer(layer.id)}
                 onDoubleClick={() => {
-                  const name = window.prompt('Rename layer', layer.name)
-                  if (name) {
-                    renameLayer(layer.id, name)
-                  }
+                  void (async () => {
+                    const input = await showPromptDialog({
+                      title: 'Rename Layer',
+                      message: 'Rename layer',
+                      defaultValue: layer.name,
+                      confirmLabel: 'Rename',
+                    })
+                    if (!input) {
+                      return
+                    }
+                    const trimmed = input.trim()
+                    if (!trimmed) {
+                      return
+                    }
+                    renameLayer(layer.id, trimmed)
+                  })()
                 }}
               >
                 <span

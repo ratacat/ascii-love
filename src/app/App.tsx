@@ -13,6 +13,7 @@ import { PanelChrome } from '@shared/ui/PanelChrome'
 import { useEditorHotkeys } from '@shared/state/useEditorHotkeys'
 import { useEditorPersistence } from '@shared/state/useEditorPersistence'
 import { useEditorStore } from '@shared/state/editorStore'
+import { DialogHost } from '@shared/ui/DialogHost'
 
 export function App() {
   useEditorHotkeys()
@@ -50,6 +51,7 @@ export function App() {
         </aside>
       </div>
       <StatusBar />
+      <DialogHost />
     </div>
   )
 }

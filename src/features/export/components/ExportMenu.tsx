@@ -38,8 +38,12 @@ export function ExportMenu() {
         scope: effectiveScope,
         padding,
       })
+      const delivered = await triggerDownload(result)
 
-      triggerDownload(result)
+      if (!delivered) {
+        setStatus('Export canceled')
+        return
+      }
 
       setStatus(`Exported ${result.filename}`)
       setOpen(false)

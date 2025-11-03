@@ -24,19 +24,34 @@ type GlyphHitBox = {
   centerY: number
 }
 
+const coerceNumber = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? (value as number) : fallback
+
+const getGlyphPosition = (glyph: GlyphInstance): Vec2 => {
+  const position = glyph.position
+  if (!position || typeof position !== 'object') {
+    return { x: 0, y: 0 }
+  }
+  return {
+    x: coerceNumber((position as Vec2).x, 0),
+    y: coerceNumber((position as Vec2).y, 0),
+  }
+}
+
 function computeGlyphHitBox(glyph: GlyphInstance): GlyphHitBox {
-  const translationX = glyph.transform?.translation?.x ?? 0
-  const translationY = glyph.transform?.translation?.y ?? 0
-  const scaleX = glyph.transform?.scale?.x ?? 1
-  const scaleY = glyph.transform?.scale?.y ?? 1
-  const rotationDeg = glyph.transform?.rotation ?? 0
+  const translationX = coerceNumber(glyph.transform?.translation?.x, 0)
+  const translationY = coerceNumber(glyph.transform?.translation?.y, 0)
+  const scaleX = coerceNumber(glyph.transform?.scale?.x, 1)
+  const scaleY = coerceNumber(glyph.transform?.scale?.y, 1)
+  const rotationDeg = coerceNumber(glyph.transform?.rotation, 0)
 
   const rotationRad = (rotationDeg * Math.PI) / 180
   const cos = Math.cos(rotationRad)
   const sin = Math.sin(rotationRad)
+  const position = getGlyphPosition(glyph)
 
-  const centerX = glyph.position.x + 0.5 + translationX
-  const centerY = glyph.position.y + 0.5 + translationY
+  const centerX = position.x + 0.5 + translationX
+  const centerY = position.y + 0.5 + translationY
 
   const halfWidth = Math.max(0.05, 0.5 - HITBOX_INSET_X)
   const halfHeight = Math.max(0.05, 0.5 - HITBOX_INSET_Y)
@@ -261,10 +276,11 @@ export function CanvasViewport() {
       const touchedIds: string[] = []
       for (const entry of glyphEntries) {
         const glyph = entry.glyph
-        const glyphMinX = glyph.position.x
-        const glyphMaxX = glyph.position.x + 1
-        const glyphMinY = glyph.position.y
-        const glyphMaxY = glyph.position.y + 1
+        const glyphPosition = getGlyphPosition(glyph)
+        const glyphMinX = glyphPosition.x
+        const glyphMaxX = glyphPosition.x + 1
+        const glyphMinY = glyphPosition.y
+        const glyphMaxY = glyphPosition.y + 1
 
         const intersects =
           glyphMinX <= maxX && glyphMaxX >= minX && glyphMinY <= maxY && glyphMaxY >= minY
@@ -709,6 +725,7 @@ const handlePointerMove = useCallback(
               .filter(Boolean)
               .join(' ')}
             style={canvasStyle}
+            tabIndex={-1}
             onClick={handleStageInteraction}
             onMouseDown={handleStageMouseDown}
             onMouseMove={handlePointerMove}

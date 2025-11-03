@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
 
 import { useEditorStore } from '@shared/state/editorStore'
+import { showConfirmDialog, showPromptDialog } from '@shared/state/dialogStore'
 
 const formatHex = (value: string): string => value.toUpperCase()
 const SWATCH_DRAG_TYPE = 'application/x-asciilove-swatch'
@@ -88,14 +89,14 @@ export function PalettePanel() {
     removeSwatch(paletteId, swatchId)
   }
 
-  const handleCreatePalette = () => {
-    if (typeof window === 'undefined' || typeof window.prompt !== 'function') {
-      addPalette({})
-      return
-    }
-    const suggestedName =
-      palettes.length > 0 ? `Palette ${palettes.length + 1}` : 'Palette 1'
-    const input = window.prompt('Name new palette', suggestedName)
+  const handleCreatePalette = async () => {
+    const suggestedName = palettes.length > 0 ? `Palette ${palettes.length + 1}` : 'Palette 1'
+    const input = await showPromptDialog({
+      title: 'Create Palette',
+      message: 'Name new palette',
+      defaultValue: suggestedName,
+      confirmLabel: 'Create',
+    })
     if (input === null) {
       return
     }
@@ -103,12 +104,13 @@ export function PalettePanel() {
     addPalette({ name: trimmed || undefined })
   }
 
-  const handleRenamePalette = (paletteId: string, currentName: string) => {
-    if (typeof window === 'undefined' || typeof window.prompt !== 'function') {
-      renamePalette(paletteId, currentName)
-      return
-    }
-    const input = window.prompt('Rename palette', currentName)
+  const handleRenamePalette = async (paletteId: string, currentName: string) => {
+    const input = await showPromptDialog({
+      title: 'Rename Palette',
+      message: 'Rename palette',
+      defaultValue: currentName,
+      confirmLabel: 'Rename',
+    })
     if (input === null) {
       return
     }
@@ -119,14 +121,13 @@ export function PalettePanel() {
     renamePalette(paletteId, trimmed)
   }
 
-  const handleDeletePalette = (paletteId: string, paletteName: string) => {
-    if (typeof window === 'undefined' || typeof window.confirm !== 'function') {
-      removePalette(paletteId)
-      return
-    }
-    const confirmed = window.confirm(
-      `Delete palette "${paletteName}"?\nGlyphs using it will fall back to the first remaining palette.`,
-    )
+  const handleDeletePalette = async (paletteId: string, paletteName: string) => {
+    const confirmed = await showConfirmDialog({
+      title: 'Delete Palette',
+      message: `Delete palette "${paletteName}"? Glyphs using it will fall back to the first remaining palette.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep palette',
+    })
     if (!confirmed) {
       return
     }
